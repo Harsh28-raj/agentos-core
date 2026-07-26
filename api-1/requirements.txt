@@ -2,14 +2,13 @@ fastapi
 uvicorn
 python-dotenv
 pydantic
+PyPDF2
 langchain
 langchain-core
 langchain-community
 langchain-groq
+langchain-huggingface
 langgraph
 tavily-python
-PyPDF2
---extra-index-url https://download.pytorch.org/whl/cpu
-torch
 sentence-transformers
 chromadb
