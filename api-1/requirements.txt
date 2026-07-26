@@ -8,3 +8,5 @@ sse-starlette
 python-dotenv
 pydantic
 PyPDF2
+langchain-community
+tavily-python
