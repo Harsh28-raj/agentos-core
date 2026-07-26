@@ -3,6 +3,7 @@ uvicorn
 python-dotenv
 pydantic
 PyPDF2
+python-multipart
 langchain
 langchain-core
 langchain-community
