@@ -10,3 +10,6 @@ pydantic
 PyPDF2
 langchain-community
 tavily-python
+langchain-huggingface
+sentence-transformers
+transformers
