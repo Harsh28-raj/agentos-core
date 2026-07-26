@@ -117,3 +117,9 @@ async def upload_file(file: UploadFile = File(...)):
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+# --- RENDER PORT RUNNER (SABSE NEECHE ISKO ADD KARO) ---
+if __name__ == "__main__":
+    import uvicorn
+    port = int(os.getenv("PORT", 10000))
+    uvicorn.run("app.main:app", host="0.0.0.0", port=port)        
+        
