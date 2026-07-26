@@ -6,9 +6,9 @@ PyPDF2
 langchain
 langchain-core
 langchain-community
+langchain-chroma
+fastembed
 langchain-groq
-langchain-huggingface
 langgraph
 tavily-python
-sentence-transformers
 chromadb
