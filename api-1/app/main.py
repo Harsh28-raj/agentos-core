@@ -1,11 +1,13 @@
 import os
 import io
+import json
 import asyncio
 import PyPDF2
 from dotenv import load_dotenv
 
 from fastapi import FastAPI, HTTPException, File, UploadFile
 from fastapi.responses import StreamingResponse
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 # LangChain & Groq Imports
@@ -15,17 +17,26 @@ from langchain_core.messages import HumanMessage
 # Vector DB & AI Agent Imports
 from app.db.vector_store import add_to_memory
 from app.ai.agent import agent_executor
-from app.models import ChatRequest
+
 # Load environment variables
 load_dotenv()
 
 app = FastAPI(
-    title="AgentOS Backend",
-    description="The Personal AI Operating System Backend",
+    title="AgentOS Backend Engine",
+    description="The Personal AI Operating System Backend Engine",
     version="1.0.0"
 )
 
-# Initialize Groq LLM (Streaming endpoint ke liye)
+# Enable CORS for Frontend Development
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Production mein exact frontend domain se replace kar sakte ho
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Initialize Groq LLM
 llm = None
 try:
     llm = ChatGroq(
@@ -36,10 +47,12 @@ try:
 except Exception as e:
     print(f"⚠️ Error initializing Groq LLM: {e}")
 
+
 # Pydantic Model for incoming chat requests
 class ChatRequest(BaseModel):
     message: str
     user_id: str = "default_user"
+
 
 # --- HEALTH CHECK ---
 @app.get("/")
@@ -47,16 +60,14 @@ async def root():
     return {"status": "AgentOS Backend is running smoothly! 🚀"}
 
 
-# --- FEATURE 3 & 4: LANGGRAPH AGENT WITH MEMORY ---
+# --- STANDARD SYNCHRONOUS CHAT ENDPOINT ---
 @app.post("/api/chat")
 async def chat_endpoint(request: ChatRequest):
     try:
         messages = [HumanMessage(content=request.message)]
-        
-        # Config set karna: User ki memory track karne ke liye
         config = {"configurable": {"thread_id": request.user_id}}
         
-        # Agent call
+        # Agent Execution
         response = agent_executor.invoke({"messages": messages}, config=config)
         
         final_reply = response["messages"][-1].content
@@ -67,7 +78,7 @@ async def chat_endpoint(request: ChatRequest):
 
 
 # =====================================================================
-# FEATURE 2 STEP 1: EVENT-DRIVEN SSE STREAMING ENDPOINT
+# FEATURE 2: EVENT-DRIVEN SSE STREAMING ENDPOINT (astream_events v2)
 # =====================================================================
 @app.post("/api/chat/stream")
 async def chat_stream_endpoint(request: ChatRequest):
@@ -77,7 +88,6 @@ async def chat_stream_endpoint(request: ChatRequest):
     """
     async def event_generator():
         try:
-            # Fallback for optional user_id
             user_id = request.user_id if request.user_id else "default_user"
             messages = [HumanMessage(content=request.message)]
             config = {"configurable": {"thread_id": user_id}}
@@ -146,7 +156,8 @@ async def chat_stream_endpoint(request: ChatRequest):
 
     return StreamingResponse(event_generator(), media_type="text/event-stream")
 
-# --- FEATURE 6: PDF / FILE UPLOAD ENDPOINT ---
+
+# --- DOCUMENT UPLOAD ENDPOINT ---
 @app.post("/api/upload")
 async def upload_file(file: UploadFile = File(...)):
     try:
@@ -163,7 +174,7 @@ async def upload_file(file: UploadFile = File(...)):
         if not extracted_text.strip():
             raise HTTPException(status_code=400, detail="No readable text found in the PDF.")
             
-        # Memory mein store karna
+        # Store in ChromaDB vector memory
         add_to_memory(text=extracted_text, metadata={"source": file.filename})
         
         return {
