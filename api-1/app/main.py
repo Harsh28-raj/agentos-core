@@ -15,7 +15,7 @@ from langchain_core.messages import HumanMessage
 # Vector DB & AI Agent Imports
 from app.db.vector_store import add_to_memory
 from app.ai.agent import agent_executor
-
+from app.models import ChatRequest
 # Load environment variables
 load_dotenv()
 
@@ -66,28 +66,85 @@ async def chat_endpoint(request: ChatRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-# --- FEATURE 2: STREAMING LLM CHAT ENDPOINT (SSE) ---
+# =====================================================================
+# FEATURE 2 STEP 1: EVENT-DRIVEN SSE STREAMING ENDPOINT
+# =====================================================================
 @app.post("/api/chat/stream")
 async def chat_stream_endpoint(request: ChatRequest):
-    if not llm:
-        raise HTTPException(status_code=500, detail="LLM service is not initialized. Check API Key.")
-
+    """
+    Streams Agent execution events (Thought, Tool Start/End, Tokens)
+    using LangGraph's astream_events engine over Server-Sent Events (SSE).
+    """
     async def event_generator():
         try:
+            # Fallback for optional user_id
+            user_id = request.user_id if request.user_id else "default_user"
             messages = [HumanMessage(content=request.message)]
-            
-            # Chunk-by-chunk stream generate karna
-            async for chunk in llm.astream(messages):
-                if chunk.content:
-                    yield f"data: {chunk.content}\n\n"
-            
-            yield "data: [DONE]\n\n"
-            
+            config = {"configurable": {"thread_id": user_id}}
+
+            # 1. Emit Initial Thinking State
+            init_event = json.dumps({
+                "type": "thought", 
+                "content": "Analyzing query and planning steps..."
+            })
+            yield f"data: {init_event}\n\n"
+
+            # 2. Consume LangGraph v2 Event Stream
+            async for event in agent_executor.astream_events(
+                {"messages": messages}, 
+                config=config, 
+                version="v2"
+            ):
+                event_type = event.get("event")
+
+                # --- EVENT A: TOOL STARTED ---
+                if event_type == "on_tool_start":
+                    tool_name = event.get("name", "unknown_tool")
+                    tool_input = event.get("data", {}).get("input", {})
+                    
+                    payload = json.dumps({
+                        "type": "tool_start",
+                        "tool": tool_name,
+                        "content": f"Executing tool: {tool_name}",
+                        "input": tool_input
+                    })
+                    yield f"data: {payload}\n\n"
+
+                # --- EVENT B: TOOL COMPLETED ---
+                elif event_type == "on_tool_end":
+                    tool_name = event.get("name", "unknown_tool")
+                    tool_output = str(event.get("data", {}).get("output", ""))
+                    
+                    payload = json.dumps({
+                        "type": "tool_end",
+                        "tool": tool_name,
+                        "content": f"Finished executing {tool_name}",
+                        "output": tool_output[:150]  # First 150 chars preview
+                    })
+                    yield f"data: {payload}\n\n"
+
+                # --- EVENT C: LIVE RESPONSE TOKENS ---
+                elif event_type == "on_chat_model_stream":
+                    chunk = event.get("data", {}).get("chunk")
+                    if chunk and hasattr(chunk, "content") and chunk.content:
+                        payload = json.dumps({
+                            "type": "token",
+                            "content": chunk.content
+                        })
+                        yield f"data: {payload}\n\n"
+
+            # --- EVENT D: STREAM COMPLETED ---
+            done_payload = json.dumps({"type": "done"})
+            yield f"data: {done_payload}\n\n"
+
         except Exception as e:
-            yield f"data: ERROR: {str(e)}\n\n"
+            error_payload = json.dumps({
+                "type": "error", 
+                "content": str(e)
+            })
+            yield f"data: {error_payload}\n\n"
 
     return StreamingResponse(event_generator(), media_type="text/event-stream")
-
 
 # --- FEATURE 6: PDF / FILE UPLOAD ENDPOINT ---
 @app.post("/api/upload")
