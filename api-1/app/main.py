@@ -190,5 +190,6 @@ async def upload_file(file: UploadFile = File(...)):
 # --- RENDER PORT RUNNER ---
 if __name__ == "__main__":
     import uvicorn
-    port = int(os.getenv("PORT", 10000))
-    uvicorn.run("app.main:app", host="0.0.0.0", port=port)
+    # Render explicitly passes PORT env variable
+    port = int(os.environ.get("PORT", 10000))
+    uvicorn.run(app, host="0.0.0.0", port=port)
