@@ -14,3 +14,6 @@ sentence-transformers
 chromadb
 redis
 langgraph-checkpoint-redis
+python-multipart
+langchain-chroma
+fastembed
