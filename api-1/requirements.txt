@@ -7,10 +7,8 @@ langchain
 langchain-core
 langchain-community
 langchain-groq
-langchain-huggingface
 langgraph
 tavily-python
-sentence-transformers
 chromadb
 redis
 langgraph-checkpoint-redis
