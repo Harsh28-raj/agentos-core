@@ -3,15 +3,14 @@ uvicorn
 python-dotenv
 pydantic
 PyPDF2
-python-multipart
 langchain
 langchain-core
 langchain-community
-langchain-chroma
-fastembed
 langchain-groq
 langchain-huggingface
 langgraph
 tavily-python
 sentence-transformers
 chromadb
+redis
+langgraph-checkpoint-redis

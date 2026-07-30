@@ -38,3 +38,4 @@ htmlcov/
 *.njsproj
 *.sln
 *.sw?
+chroma_db/
