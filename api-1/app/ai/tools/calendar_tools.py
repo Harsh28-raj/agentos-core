@@ -55,25 +55,27 @@ def check_calendar_availability(start_time: str, end_time: str, config: Runnable
     user_id = config.get("configurable", {}).get("user_id", "default_user") if config else "default_user"
     try:
         service = get_calendar_service(user_id)
-        events_result = service.events().list(
-            calendarId='primary', 
-            timeMin=start_time,
-            timeMax=end_time,
-            singleEvents=True,
-            orderBy='startTime'
-        ).execute()
         
-        events = events_result.get('items', [])
+        body = {
+            "timeMin": start_time,
+            "timeMax": end_time,
+            "timeZone": "UTC",
+            "items": [{"id": "primary"}]
+        }
         
-        if not events:
+        events_result = service.freebusy().query(body=body).execute()
+        calendars = events_result.get('calendars', {})
+        primary_cal = calendars.get('primary', {})
+        busy_slots = primary_cal.get('busy', [])
+        
+        if not busy_slots:
             return f"The calendar is completely free between {start_time} and {end_time}."
             
-        output = [f"Found {len(events)} events scheduled:"]
-        for event in events:
-            start = event['start'].get('dateTime', event['start'].get('date'))
-            end = event['end'].get('dateTime', event['end'].get('date'))
-            summary = event.get('summary', 'Busy')
-            output.append(f"- {summary} ({start} to {end})")
+        output = [f"Found {len(busy_slots)} busy slots:"]
+        for slot in busy_slots:
+            start = slot.get('start')
+            end = slot.get('end')
+            output.append(f"- Busy from {start} to {end}")
             
         return "\n".join(output)
     except Exception as e:
