@@ -1,8 +1,10 @@
 import os
 from datetime import datetime
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
-from sqlalchemy.orm import sessionmaker, declarative_base
-from sqlalchemy import Column, Integer, String, Float, DateTime, JSON
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+from sqlalchemy import text
+from app.db.models import Base, EpisodicLog, UserToken
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -19,21 +21,15 @@ engine = create_async_engine(
     connect_args={"ssl": "require"}
 ) if DATABASE_URL else None
 AsyncSessionLocal = sessionmaker(bind=engine, class_=AsyncSession, expire_on_commit=False) if engine else None
-Base = declarative_base()
 
-class EpisodicLog(Base):
-    __tablename__ = "episodic_logs"
+# Synchronous engine for tools that require blocking DB queries (e.g., Gmail OAuth)
+sync_db_url = DATABASE_URL.replace("+asyncpg", "+psycopg") if DATABASE_URL else ""
+sync_engine = create_engine(
+    sync_db_url,
+    connect_args={"sslmode": "require"}
+) if sync_db_url else None
+SyncSessionLocal = sessionmaker(bind=sync_engine) if sync_engine else None
 
-    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
-    thread_id = Column(String, index=True, nullable=False)
-    run_id = Column(String, nullable=False)
-    tool_name = Column(String, nullable=True)
-    tool_input = Column(JSON, nullable=True)
-    tool_output = Column(JSON, nullable=True)
-    reasoning_steps = Column(JSON, nullable=True)
-    status = Column(String, nullable=False, default="started")
-    latency_ms = Column(Float, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
 
 async def init_db():
     if not engine:
@@ -41,6 +37,8 @@ async def init_db():
         return
     try:
         async with engine.begin() as conn:
+            # Create pgvector extension if it doesn't exist
+            await conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
             await conn.run_sync(Base.metadata.create_all)
         print("Neon Postgres DB initialized successfully!")
     except Exception as e:

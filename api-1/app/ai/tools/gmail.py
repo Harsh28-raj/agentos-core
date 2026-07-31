@@ -1,54 +1,69 @@
 import os
 import base64
+import json
 from email.message import EmailMessage
 from typing import List, Dict, Optional
 from langchain_core.tools import tool
+from langchain_core.runnables import RunnableConfig
 from google.oauth2.credentials import Credentials
-from google_auth_oauthlib.flow import InstalledAppFlow
 from google.auth.transport.requests import Request
 from googleapiclient.discovery import build
-from googleapiclient.errors import HttpError
 
-SCOPES = ['https://www.googleapis.com/auth/gmail.modify']
+from app.db.postgres import SyncSessionLocal
+from app.db.models import UserToken
+from app.core.security import encrypt_token, decrypt_token
 
-def get_gmail_service():
-    """Helper function to get the Gmail API service."""
-    creds = None
-    base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..'))
-    token_path = os.path.join(base_dir, 'token.json')
-    creds_path = os.path.join(base_dir, 'credentials.json')
+SCOPES = [
+    'https://mail.google.com/',
+    'https://www.googleapis.com/auth/calendar'
+]
 
-    # If modifying this to production, token generation should be handled explicitly.
-    if os.path.exists(token_path):
-        creds = Credentials.from_authorized_user_file(token_path, SCOPES)
+def get_gmail_service(user_id: str):
+    """Helper function to get the Gmail API service using UserToken from the DB."""
+    if not SyncSessionLocal:
+        raise Exception("Database connection not configured.")
         
-    if not creds or not creds.valid:
+    session = SyncSessionLocal()
+    try:
+        token_record = session.query(UserToken).filter_by(user_id=user_id, service_name='google').first()
+        
+        if not token_record:
+            # Fallback for dev environment or if OAuth flow hasn't run
+            raise Exception(f"No Gmail credentials found for user '{user_id}'. Please authenticate first.")
+            
+        token_data = decrypt_token(token_record.encrypted_data)
+        
+        # In a real app, client_id and client_secret should be in ENV, but they are stored in token_data
+        # typically, or we can use credentials.json if we still want local secrets for the app identity.
+        # Assuming token_data contains the full credentials dict.
+        creds = Credentials.from_authorized_user_info(token_data, SCOPES)
+        
         if creds and creds.expired and creds.refresh_token:
             try:
                 creds.refresh(Request())
-            except Exception:
-                raise Exception("Failed to refresh Gmail credentials. Please re-authenticate.")
-        else:
-            if not os.path.exists(creds_path):
-                raise Exception("credentials.json not found. Gmail API is not configured.")
-            # Note: In a headless environment, InstalledAppFlow will block waiting for a browser. 
-            # We assume for this implementation that the token is either generated locally or will be.
-            # Raising an error gracefully if no valid token is present and it requires interactive auth.
-            raise Exception("No valid Gmail token found. Please run a local script to generate token.json first.")
-            
-    return build('gmail', 'v1', credentials=creds)
+                # Update DB with new refreshed token
+                new_token_data = json.loads(creds.to_json())
+                token_record.encrypted_data = encrypt_token(new_token_data)
+                session.commit()
+            except Exception as e:
+                raise Exception(f"Failed to refresh Gmail credentials: {e}")
+                
+        return build('gmail', 'v1', credentials=creds)
+    finally:
+        session.close()
 
 
 @tool
-def search_emails(query: str, max_results: int = 5) -> str:
+def search_emails(query: str, max_results: int = 5, config: RunnableConfig = None) -> str:
     """Search unread/recent messages in Gmail.
     
     Args:
         query: The search query (e.g., 'is:unread', 'from:boss@example.com').
         max_results: Maximum number of emails to return.
     """
+    user_id = config.get("configurable", {}).get("user_id", "default_user") if config else "default_user"
     try:
-        service = get_gmail_service()
+        service = get_gmail_service(user_id)
         results = service.users().messages().list(userId='me', q=query, maxResults=max_results).execute()
         messages = results.get('messages', [])
         
@@ -70,14 +85,15 @@ def search_emails(query: str, max_results: int = 5) -> str:
         return f"Gmail API Error: {str(e)}"
 
 @tool
-def read_email_content(message_id: str) -> str:
+def read_email_content(message_id: str, config: RunnableConfig = None) -> str:
     """Fetch and extract full body text and headers for a given email.
     
     Args:
         message_id: The ID of the email to read.
     """
+    user_id = config.get("configurable", {}).get("user_id", "default_user") if config else "default_user"
     try:
-        service = get_gmail_service()
+        service = get_gmail_service(user_id)
         msg = service.users().messages().get(userId='me', id=message_id, format='full').execute()
         
         headers = msg['payload'].get('headers', [])
@@ -102,7 +118,7 @@ def read_email_content(message_id: str) -> str:
         return f"Gmail API Error: {str(e)}"
 
 @tool
-def draft_email(recipient: str, subject: str, body: str) -> str:
+def draft_email(recipient: str, subject: str, body: str, config: RunnableConfig = None) -> str:
     """Create an email draft in Gmail.
     
     Args:
@@ -110,8 +126,9 @@ def draft_email(recipient: str, subject: str, body: str) -> str:
         subject: The subject of the email.
         body: The body content of the email.
     """
+    user_id = config.get("configurable", {}).get("user_id", "default_user") if config else "default_user"
     try:
-        service = get_gmail_service()
+        service = get_gmail_service(user_id)
         message = EmailMessage()
         message.set_content(body)
         message['To'] = recipient
@@ -126,7 +143,7 @@ def draft_email(recipient: str, subject: str, body: str) -> str:
         return f"Gmail API Error: {str(e)}"
 
 @tool
-def send_email(draft_id: Optional[str] = None, recipient: Optional[str] = None, subject: Optional[str] = None, body: Optional[str] = None) -> str:
+def send_email(draft_id: Optional[str] = None, recipient: Optional[str] = None, subject: Optional[str] = None, body: Optional[str] = None, config: RunnableConfig = None) -> str:
     """Send an email, preferably by sending an existing draft ID.
     
     Args:
@@ -135,8 +152,9 @@ def send_email(draft_id: Optional[str] = None, recipient: Optional[str] = None, 
         subject: The subject of the email (if not using draft_id).
         body: The body content of the email (if not using draft_id).
     """
+    user_id = config.get("configurable", {}).get("user_id", "default_user") if config else "default_user"
     try:
-        service = get_gmail_service()
+        service = get_gmail_service(user_id)
         
         if draft_id:
             sent_message = service.users().drafts().send(userId='me', body={'id': draft_id}).execute()

@@ -27,6 +27,7 @@ from app.ai.agents.research_agent import research_agent
 from app.ai.agents.coder_agent import coder_agent
 from app.ai.agents.vision_agent import vision_agent
 from app.ai.agents.gmail_agent import gmail_agent
+from app.ai.agents.calendar_agent import calendar_agent
 
 # The State for the Supervisor Graph
 class AgentState(TypedDict):
@@ -34,11 +35,11 @@ class AgentState(TypedDict):
     next: str
 
 # Define Routing choices
-members = ["research_agent", "coder_agent", "vision_agent", "gmail_agent"]
+members = ["research_agent", "coder_agent", "vision_agent", "gmail_agent", "calendar_agent"]
 options = ["FINISH"] + members
 
 class RouteResponse(BaseModel):
-    next: Literal["FINISH", "research_agent", "coder_agent", "vision_agent", "gmail_agent"]
+    next: Literal["FINISH", "research_agent", "coder_agent", "vision_agent", "gmail_agent", "calendar_agent"]
 
 # Supervisor LLM setup
 llm = ChatGroq(model="llama-3.3-70b-versatile", temperature=0)
@@ -52,7 +53,9 @@ system_prompt = (
     "If the user wants to write or run code, route to coder_agent. "
     "If the user wants to analyze an image, route to vision_agent. "
     "If the user wants to read or send emails, route to gmail_agent. "
-    "If the user is approving an email, route to gmail_agent."
+    "If the user is approving an email, route to gmail_agent. "
+    "If the user wants to check their schedule or create a calendar event, route to calendar_agent. "
+    "If the user is approving a calendar event, route to calendar_agent."
 )
 
 prompt = ChatPromptTemplate.from_messages([
@@ -88,6 +91,9 @@ def vision_node(state: AgentState):
 def gmail_node(state: AgentState):
     return _invoke_agent(gmail_agent, state)
 
+def calendar_node(state: AgentState):
+    return _invoke_agent(calendar_agent, state)
+
 # Build the Graph
 builder = StateGraph(AgentState)
 builder.add_node("supervisor", supervisor_node)
@@ -95,6 +101,7 @@ builder.add_node("research_agent", research_node)
 builder.add_node("coder_agent", coder_node)
 builder.add_node("vision_agent", vision_node)
 builder.add_node("gmail_agent", gmail_node)
+builder.add_node("calendar_agent", calendar_node)
 
 for member in members:
     builder.add_edge(member, "supervisor")
@@ -107,15 +114,16 @@ builder.add_conditional_edges(
         "coder_agent": "coder_agent",
         "vision_agent": "vision_agent",
         "gmail_agent": "gmail_agent",
+        "calendar_agent": "calendar_agent",
         "FINISH": END
     }
 )
 
 builder.add_edge(START, "supervisor")
 
-# HITL Guardrails: We interrupt before the gmail_agent 
-# because it contains sensitive email drafting/sending logic.
+# HITL Guardrails: We interrupt before the gmail_agent and calendar_agent
+# because they contain sensitive email drafting/sending and event creation logic.
 supervisor_graph = builder.compile(
     checkpointer=memory,
-    interrupt_before=["gmail_agent"] 
+    interrupt_before=["gmail_agent", "calendar_agent"] 
 )

@@ -67,9 +67,11 @@ except Exception as e:
 class ChatRequest(BaseModel):
     message: str
     thread_id: str = "default_user"
+    user_id: str = "default_user"
 
 class ApproveRequest(BaseModel):
-    thread_id: str
+    thread_id: str = "default_user"
+    user_id: str = "default_user"
     action: Literal["CONFIRM", "REJECT"]
 
 @app.get("/")
@@ -80,11 +82,21 @@ async def root():
 async def chat_endpoint(request: ChatRequest):
     try:
         messages = [HumanMessage(content=request.message)]
-        config = {"configurable": {"thread_id": request.thread_id}}
+        config = {"configurable": {"thread_id": request.user_id, "user_id": request.user_id}}
+        
+        # Check if resuming
+        current_state = agent_executor.get_state(config)
+        is_resuming = len(current_state.next) > 0
+        payload = None if is_resuming else {"messages": messages}
         
         # Agent Execution with recursion guardrail
-        response = agent_executor.invoke({"messages": messages}, config=config, recursion_limit=10)
+        response = await agent_executor.ainvoke(payload, config=config, recursion_limit=10)
         
+        # Check if paused
+        final_state = agent_executor.get_state(config)
+        if final_state.next:
+            return {"reply": f"⏸️ Execution paused. Awaiting human approval to proceed with {final_state.next[0]}."}
+            
         final_reply = response["messages"][-1].content
         return {"reply": final_reply}
     except Exception as e:
@@ -96,7 +108,7 @@ async def approve_hitl(request: ApproveRequest):
     Endpoint to confirm or reject a pending HITL paused action.
     """
     try:
-        config = {"configurable": {"thread_id": request.thread_id}}
+        config = {"configurable": {"thread_id": request.user_id, "user_id": request.user_id}}
         state = agent_executor.get_state(config)
         
         if not state.next:
@@ -104,12 +116,12 @@ async def approve_hitl(request: ApproveRequest):
         
         if request.action == "CONFIRM":
             # Resume graph by passing None for input
-            agent_executor.invoke(None, config=config, recursion_limit=10)
+            await agent_executor.ainvoke(None, config=config, recursion_limit=10)
             return {"status": "resumed", "message": "Action approved and resumed."}
         else:
             # Inject a rejection message and resume
             agent_executor.update_state(config, {"messages": [HumanMessage(content="The user REJECTED the action. Do not proceed.")]})
-            agent_executor.invoke(None, config=config, recursion_limit=10)
+            await agent_executor.ainvoke(None, config=config, recursion_limit=10)
             return {"status": "rejected", "message": "Action rejected and graph updated."}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -123,8 +135,9 @@ async def chat_stream_endpoint(request: ChatRequest):
     async def event_generator():
         try:
             thread_id = request.thread_id if request.thread_id else "default_user"
+            user_id = request.user_id if request.user_id else "default_user"
             messages = [HumanMessage(content=request.message)]
-            config = {"configurable": {"thread_id": thread_id}}
+            config = {"configurable": {"thread_id": thread_id, "user_id": user_id}}
             
             # 1. State check to see if we are resuming from a HITL pause
             current_state = agent_executor.get_state(config)

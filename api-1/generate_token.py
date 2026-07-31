@@ -1,7 +1,10 @@
 import os
 from google_auth_oauthlib.flow import InstalledAppFlow
 
-SCOPES = ['https://mail.google.com/']
+SCOPES = [
+    'https://mail.google.com/',
+    'https://www.googleapis.com/auth/calendar'
+]
 
 def generate_gmail_token():
     base_dir = os.path.dirname(os.path.abspath(__file__))
@@ -13,7 +16,7 @@ def generate_gmail_token():
         return
 
     flow = InstalledAppFlow.from_client_secrets_file(credentials_path, SCOPES)
-    creds = flow.run_local_server(port=0)
+    creds = flow.run_local_server(port=0, open_browser=False)
     
     with open(token_path, 'w') as token:
         token.write(creds.to_json())
