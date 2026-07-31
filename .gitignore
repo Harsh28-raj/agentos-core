@@ -39,3 +39,6 @@ htmlcov/
 *.sln
 *.sw?
 chroma_db/
+
+credentials.json
+token.json
