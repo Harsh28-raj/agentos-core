@@ -19,7 +19,9 @@ from langchain_core.messages import HumanMessage
 # Vector DB & AI Agent Imports
 from app.db.vector_store import add_to_memory
 from app.ai.agent import agent_executor, redis_conn, memory
-
+from app.db.postgres import init_db, log_episodic_event
+from app.routers.logs import router as logs_router
+import base64
 # Load environment variables
 load_dotenv()
 
@@ -28,6 +30,7 @@ async def lifespan(app: FastAPI):
     # Ensure Redis Search Indices are created
     if hasattr(memory, "setup"):
         memory.setup()
+    await init_db()
     yield
 
 app = FastAPI(
@@ -36,6 +39,8 @@ app = FastAPI(
     version="1.0.0",
     lifespan=lifespan
 )
+
+app.include_router(logs_router)
 
 # Enable CORS for Frontend Development
 app.add_middleware(
@@ -126,6 +131,13 @@ async def chat_stream_endpoint(request: ChatRequest):
                             "content": f"Executing tool: {tool_name}",
                             "input": tool_input
                         })
+                        asyncio.create_task(log_episodic_event(
+                            thread_id=thread_id,
+                            run_id=event.get("run_id", "unknown"),
+                            status="started",
+                            tool_name=tool_name,
+                            tool_input=tool_input
+                        ))
                         yield f"data: {payload}\n\n"
                     elif event_type == "on_tool_end":
                         tool_name = event.get("name", "unknown_tool")
@@ -136,7 +148,26 @@ async def chat_stream_endpoint(request: ChatRequest):
                             "content": f"Finished executing {tool_name}",
                             "output": tool_output[:150]
                         })
+                        asyncio.create_task(log_episodic_event(
+                            thread_id=thread_id,
+                            run_id=event.get("run_id", "unknown"),
+                            status="completed",
+                            tool_name=tool_name,
+                            tool_output={"output": tool_output}
+                        ))
                         yield f"data: {payload}\n\n"
+                    elif event_type == "on_chat_model_end":
+                        output = event.get("data", {}).get("output", {})
+                        content = ""
+                        if hasattr(output, "content") and output.content:
+                            content = output.content
+                        if content:
+                            asyncio.create_task(log_episodic_event(
+                                thread_id=thread_id,
+                                run_id=event.get("run_id", "unknown"),
+                                status="completed",
+                                reasoning_steps=[{"content": content}]
+                            ))
                     elif event_type == "on_chat_model_stream":
                         chunk = event.get("data", {}).get("chunk")
                         if chunk and hasattr(chunk, "content") and chunk.content:
@@ -234,18 +265,44 @@ async def delete_chat_history(thread_id: str):
 @app.post("/api/upload")
 async def upload_file(file: UploadFile = File(...)):
     try:
-        if not file.filename.endswith(".pdf"):
-            raise HTTPException(status_code=400, detail="Only PDF files are supported for now.")
-        
         file_content = await file.read()
-        pdf_reader = PyPDF2.PdfReader(io.BytesIO(file_content))
-        
         extracted_text = ""
-        for page in pdf_reader.pages:
-            extracted_text += page.extract_text() + "\n"
+        
+        if file.filename.lower().endswith(".pdf"):
+            pdf_reader = PyPDF2.PdfReader(io.BytesIO(file_content))
+            for page in pdf_reader.pages:
+                extracted_text += page.extract_text() + "\n"
+        elif file.filename.lower().endswith((".png", ".jpg", ".jpeg", ".webp")):
+            # Process image with Vision LLM
+            base64_image = base64.b64encode(file_content).decode('utf-8')
+            mime_type = file.content_type or "image/jpeg"
+            
+            groq_api_key = os.getenv("GROQ_API_KEY")
+            if not groq_api_key:
+                raise HTTPException(status_code=500, detail="GROQ_API_KEY environment variable is missing.")
+
+            vision_llm = ChatGroq(
+                model="qwen/qwen3.6-27b", 
+                max_tokens=500,
+                api_key=groq_api_key
+            )
+            msg = vision_llm.invoke(
+                [
+                    {
+                        "role": "user",
+                        "content": [
+                            {"type": "text", "text": "Extract and summarize the text and visual content of this image."},
+                            {"type": "image_url", "image_url": {"url": f"data:{mime_type};base64,{base64_image}"}}
+                        ]
+                    }
+                ]
+            )
+            extracted_text = msg.content
+        else:
+            raise HTTPException(status_code=400, detail="Only PDF and Image files (PNG, JPG, WEBP) are supported.")
             
         if not extracted_text.strip():
-            raise HTTPException(status_code=400, detail="No readable text found in the PDF.")
+            raise HTTPException(status_code=400, detail="No readable text/content found in the file.")
             
         # Store in ChromaDB vector memory
         add_to_memory(text=extracted_text, metadata={"source": file.filename})
@@ -253,7 +310,7 @@ async def upload_file(file: UploadFile = File(...)):
         return {
             "status": "success",
             "message": f"File '{file.filename}' processed and saved to memory!",
-            "pages_read": len(pdf_reader.pages)
+            "content_length": len(extracted_text)
         }
         
     except Exception as e:

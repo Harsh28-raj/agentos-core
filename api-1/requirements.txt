@@ -15,3 +15,7 @@ langgraph-checkpoint-redis
 python-multipart
 langchain-chroma
 fastembed
+asyncpg
+sqlalchemy
+langchain-openai
+pillow
