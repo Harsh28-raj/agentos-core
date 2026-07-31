@@ -17,7 +17,7 @@ A production-ready, asynchronous **FastAPI** backend powering **AgentOS** — a 
 |---|---|
 | 🧠 **ReAct Reasoning Engine** | Built on **LangGraph**, powered by **LLaMA 3.3 70B** via Groq LPUs for fast, multi-step reasoning |
 | 🌐 **Live Web Search** | Integrates the **Tavily API** for real-time facts, news, and current events |
-| 📦 **Long-Term Vector Memory** | Persistent, user-isolated memory via **ChromaDB** + **FastEmbed** |
+| 📦 **Long-Term Vector Memory** | Persistent, user-isolated memory via **Neon Postgres (pgvector)** + **FastEmbed** |
 | ⚡ **SSE Streaming** | Token-by-token streaming at `/api/chat/stream`, ChatGPT-style |
 | 📄 **Document Ingestion** | Built-in PDF parsing (`PyPDF2`) — auto-extracts and vectorizes uploaded docs |
 
@@ -29,7 +29,7 @@ A production-ready, asynchronous **FastAPI** backend powering **AgentOS** — a 
 |---|---|
 | Framework | FastAPI + Uvicorn (ASGI) |
 | LLM Engine | LangChain + LangGraph + `langchain-groq` (LLaMA 3.3 70B) |
-| Vector Store | ChromaDB + FastEmbed (`BAAI/bge-small-en-v1.5`) |
+| Vector Store | Neon Postgres (pgvector) + FastEmbed (`BAAI/bge-small-en-v1.5`) |
 | Search | Tavily Python SDK |
 | Deployment | Render (Linux, Free-Tier Container) |
 
@@ -42,9 +42,9 @@ api-1/
 ├── app/
 │   ├── ai/
 │   │   ├── agent.py          # LangGraph ReAct Agent definition & tool binding
-│   │   └── tools.py          # Custom tools (Tavily Search, Weather, Chroma Memory)
+│   │   └── tools.py          # Custom tools (Tavily Search, Weather, Postgres Memory)
 │   ├── db/
-│   │   ├── chroma_db/        # Persistent local ChromaDB files
+│   │   ├── postgres.py       # Neon Postgres setup
 │   │   └── vector_store.py   # FastEmbed & memory CRUD operations
 │   └── main.py               # FastAPI routes, SSE generators, exception handlers
 ├── requirements.txt          # Locked production dependencies

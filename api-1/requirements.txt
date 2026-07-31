@@ -9,11 +9,9 @@ langchain-community
 langchain-groq
 langgraph
 tavily-python
-chromadb
 redis
 langgraph-checkpoint-redis
 python-multipart
-langchain-chroma
 fastembed
 asyncpg
 sqlalchemy
