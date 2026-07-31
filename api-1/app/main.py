@@ -6,6 +6,7 @@ import asyncio
 import PyPDF2
 from dotenv import load_dotenv
 from contextlib import asynccontextmanager
+from typing import Literal
 
 from fastapi import FastAPI, HTTPException, File, UploadFile
 from fastapi.responses import StreamingResponse
@@ -18,10 +19,11 @@ from langchain_core.messages import HumanMessage
 
 # Vector DB & AI Agent Imports
 from app.db.vector_store import add_to_memory
-from app.ai.agent import agent_executor, redis_conn, memory
+from app.ai.agents.supervisor import supervisor_graph as agent_executor, redis_conn, memory
 from app.db.postgres import init_db, log_episodic_event
 from app.routers.logs import router as logs_router
 import base64
+
 # Load environment variables
 load_dotenv()
 
@@ -35,7 +37,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="AgentOS Backend Engine",
-    description="The Personal AI Operating System Backend Engine",
+    description="The Personal AI Operating System Backend Engine with Multi-Agent Supervisor",
     version="1.0.0",
     lifespan=lifespan
 )
@@ -45,7 +47,7 @@ app.include_router(logs_router)
 # Enable CORS for Frontend Development
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Production mein exact frontend domain se replace kar sakte ho
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -62,43 +64,60 @@ try:
 except Exception as e:
     print(f"⚠️ Error initializing Groq LLM: {e}")
 
-
-# Pydantic Model for incoming chat requests
 class ChatRequest(BaseModel):
     message: str
     thread_id: str = "default_user"
 
+class ApproveRequest(BaseModel):
+    thread_id: str
+    action: Literal["CONFIRM", "REJECT"]
 
-# --- HEALTH CHECK ---
 @app.get("/")
 async def root():
     return {"status": "AgentOS Backend is running smoothly! 🚀"}
 
-
-# --- STANDARD SYNCHRONOUS CHAT ENDPOINT ---
 @app.post("/api/chat")
 async def chat_endpoint(request: ChatRequest):
     try:
         messages = [HumanMessage(content=request.message)]
         config = {"configurable": {"thread_id": request.thread_id}}
         
-        # Agent Execution
-        response = agent_executor.invoke({"messages": messages}, config=config)
+        # Agent Execution with recursion guardrail
+        response = agent_executor.invoke({"messages": messages}, config=config, recursion_limit=10)
         
         final_reply = response["messages"][-1].content
         return {"reply": final_reply}
-        
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.post("/api/chat/approve")
+async def approve_hitl(request: ApproveRequest):
+    """
+    Endpoint to confirm or reject a pending HITL paused action.
+    """
+    try:
+        config = {"configurable": {"thread_id": request.thread_id}}
+        state = agent_executor.get_state(config)
+        
+        if not state.next:
+            return {"status": "error", "message": "No pending execution paused."}
+        
+        if request.action == "CONFIRM":
+            # Resume graph by passing None for input
+            agent_executor.invoke(None, config=config, recursion_limit=10)
+            return {"status": "resumed", "message": "Action approved and resumed."}
+        else:
+            # Inject a rejection message and resume
+            agent_executor.update_state(config, {"messages": [HumanMessage(content="The user REJECTED the action. Do not proceed.")]})
+            agent_executor.invoke(None, config=config, recursion_limit=10)
+            return {"status": "rejected", "message": "Action rejected and graph updated."}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
-# =====================================================================
-# FEATURE 2: EVENT-DRIVEN SSE STREAMING ENDPOINT (astream_events v2)
-# =====================================================================
 @app.post("/api/chat/stream")
 async def chat_stream_endpoint(request: ChatRequest):
     """
-    Streams Agent execution events (Thought, Tool Start/End, Tokens)
+    Streams Agent execution events (Thought, Routing, Tool Start/End, Tokens)
     using LangGraph's astream_events engine over Server-Sent Events (SSE).
     """
     async def event_generator():
@@ -106,23 +125,42 @@ async def chat_stream_endpoint(request: ChatRequest):
             thread_id = request.thread_id if request.thread_id else "default_user"
             messages = [HumanMessage(content=request.message)]
             config = {"configurable": {"thread_id": thread_id}}
+            
+            # 1. State check to see if we are resuming from a HITL pause
+            current_state = agent_executor.get_state(config)
+            is_resuming = len(current_state.next) > 0
+            
+            payload_input = None if is_resuming else {"messages": messages}
 
-            # 1. Emit Initial Thinking State
+            # Emit Initial Thinking State
             init_event = json.dumps({
-                "type": "thought",
-                "content": "Analyzing query and planning steps..."
+                "type": "thinking",
+                "content": "Analyzing query and planning multi-agent steps..."
             })
             yield f"data: {init_event}\n\n"
 
+            total_input_tokens = 0
+            total_output_tokens = 0
+
             # 2. Consume LangGraph v2 Event Stream
             async for event in agent_executor.astream_events(
-                {"messages": messages},
+                payload_input,
                 config=config,
-                version="v2"
+                version="v2",
+                recursion_limit=10
             ):
                 try:
                     event_type = event.get("event")
-                    if event_type == "on_tool_start":
+                    node_name = event.get("name", "")
+                    
+                    if event_type == "on_chain_start" and node_name in ["research_agent", "coder_agent", "vision_agent", "gmail_agent"]:
+                        payload = json.dumps({
+                            "type": "route",
+                            "content": f"Routing task to {node_name.replace('_', ' ').title()}"
+                        })
+                        yield f"data: {payload}\n\n"
+                    
+                    elif event_type == "on_tool_start":
                         tool_name = event.get("name", "unknown_tool")
                         tool_input = event.get("data", {}).get("input", {})
                         payload = json.dumps({
@@ -139,6 +177,7 @@ async def chat_stream_endpoint(request: ChatRequest):
                             tool_input=tool_input
                         ))
                         yield f"data: {payload}\n\n"
+                        
                     elif event_type == "on_tool_end":
                         tool_name = event.get("name", "unknown_tool")
                         tool_output = str(event.get("data", {}).get("output", ""))
@@ -156,11 +195,17 @@ async def chat_stream_endpoint(request: ChatRequest):
                             tool_output={"output": tool_output}
                         ))
                         yield f"data: {payload}\n\n"
+                        
                     elif event_type == "on_chat_model_end":
                         output = event.get("data", {}).get("output", {})
-                        content = ""
-                        if hasattr(output, "content") and output.content:
-                            content = output.content
+                        content = getattr(output, "content", "")
+                        
+                        # Token tracking logic
+                        usage = getattr(output, "usage_metadata", {})
+                        if usage:
+                            total_input_tokens += usage.get("input_tokens", 0)
+                            total_output_tokens += usage.get("output_tokens", 0)
+                            
                         if content:
                             asyncio.create_task(log_episodic_event(
                                 thread_id=thread_id,
@@ -168,6 +213,7 @@ async def chat_stream_endpoint(request: ChatRequest):
                                 status="completed",
                                 reasoning_steps=[{"content": content}]
                             ))
+                            
                     elif event_type == "on_chat_model_stream":
                         chunk = event.get("data", {}).get("chunk")
                         if chunk and hasattr(chunk, "content") and chunk.content:
@@ -176,15 +222,29 @@ async def chat_stream_endpoint(request: ChatRequest):
                                 "content": chunk.content
                             })
                             yield f"data: {payload}\n\n"
-                    else:
-                        continue
                 except Exception as inner_e:
                     error_payload = json.dumps({"type": "error", "content": str(inner_e)})
                     yield f"data: {error_payload}\n\n"
 
-            # --- EVENT D: STREAM COMPLETED ---
-            done_payload = json.dumps({"type": "done"})
-            yield f"data: {done_payload}\n\n"
+            # Check if graph paused due to HITL
+            final_state = agent_executor.get_state(config)
+            if final_state.next:
+                hitl_payload = json.dumps({
+                    "type": "hitl_pause",
+                    "content": f"Execution paused. Awaiting human approval to proceed with {final_state.next}."
+                })
+                yield f"data: {hitl_payload}\n\n"
+            else:
+                done_payload = json.dumps({
+                    "type": "done",
+                    "tokens": {
+                        "input": total_input_tokens,
+                        "output": total_output_tokens,
+                        "total": total_input_tokens + total_output_tokens
+                    }
+                })
+                yield f"data: {done_payload}\n\n"
+                
         except Exception as e:
             if str(e):
                 error_payload = json.dumps({"type": "error", "content": str(e)})
@@ -193,33 +253,16 @@ async def chat_stream_endpoint(request: ChatRequest):
     return StreamingResponse(event_generator(), media_type="text/event-stream")
 
 
-# --- HISTORY ENDPOINTS ---
-
-
-
-
-
-
-
 @app.get("/api/chat/history/{thread_id}")
 def get_chat_history(thread_id: str):
     try:
         config = {"configurable": {"thread_id": thread_id}}
         state = agent_executor.get_state(config)
         
-        # Debug logs in terminal
-        print("\n--- DEBUG CHAT HISTORY ---")
-        print("Thread ID:", thread_id)
-        print("State exists:", state is not None)
-        if state and hasattr(state, "values"):
-            print("State values keys:", list(state.values.keys()) if isinstance(state.values, dict) else "Not a dict")
-            print("Raw state values:", state.values)
-        print("---------------------------\n")
-        
         if not state or not getattr(state, "values", None):
             return {"history": []}
         values = state.values
-        messages = values.get("messages") or values.get("chat_history") or []
+        messages = values.get("messages") or []
         
         formatted_messages = []
         for msg in messages:
@@ -230,15 +273,12 @@ def get_chat_history(thread_id: str):
                 role_val = getattr(msg, "type", "user")
                 content_val = getattr(msg, "content", "")
             role = "user" if str(role_val).lower() in ["human", "user"] else "assistant"
-            formatted_messages.append({"role": role, "content": str(content_val)})
+            if content_val:
+                formatted_messages.append({"role": role, "content": str(content_val)})
         return {"history": formatted_messages}
     except Exception as e:
         print("History Fetch Error:", str(e))
         raise HTTPException(status_code=500, detail=str(e))
-
-
-
-
 
 @app.delete("/api/chat/history/{thread_id}")
 async def delete_chat_history(thread_id: str):
@@ -260,8 +300,6 @@ async def delete_chat_history(thread_id: str):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-
-# --- DOCUMENT UPLOAD ENDPOINT ---
 @app.post("/api/upload")
 async def upload_file(file: UploadFile = File(...)):
     try:
@@ -273,7 +311,6 @@ async def upload_file(file: UploadFile = File(...)):
             for page in pdf_reader.pages:
                 extracted_text += page.extract_text() + "\n"
         elif file.filename.lower().endswith((".png", ".jpg", ".jpeg", ".webp")):
-            # Process image with Vision LLM
             base64_image = base64.b64encode(file_content).decode('utf-8')
             mime_type = file.content_type or "image/jpeg"
             
@@ -304,7 +341,6 @@ async def upload_file(file: UploadFile = File(...)):
         if not extracted_text.strip():
             raise HTTPException(status_code=400, detail="No readable text/content found in the file.")
             
-        # Store in ChromaDB vector memory
         add_to_memory(text=extracted_text, metadata={"source": file.filename})
         
         return {
@@ -316,8 +352,6 @@ async def upload_file(file: UploadFile = File(...)):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-
-# --- RENDER PORT RUNNER ---
 if __name__ == "__main__":
     import uvicorn
     port = int(os.getenv("PORT", 10000))
