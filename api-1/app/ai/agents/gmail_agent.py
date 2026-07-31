@@ -22,5 +22,6 @@ gmail_agent = create_react_agent(
     llm,
     tools=[search_emails, read_email_content, draft_email, send_email],
     prompt=system_prompt,
-    name="gmail_agent"
+    name="gmail_agent",
+    interrupt_before=["tools"]
 )

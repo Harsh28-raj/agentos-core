@@ -88,20 +88,14 @@ def coder_node(state: AgentState):
 def vision_node(state: AgentState):
     return _invoke_agent(vision_agent, state)
 
-def gmail_node(state: AgentState):
-    return _invoke_agent(gmail_agent, state)
-
-def calendar_node(state: AgentState):
-    return _invoke_agent(calendar_agent, state)
-
 # Build the Graph
 builder = StateGraph(AgentState)
 builder.add_node("supervisor", supervisor_node)
 builder.add_node("research_agent", research_node)
 builder.add_node("coder_agent", coder_node)
 builder.add_node("vision_agent", vision_node)
-builder.add_node("gmail_agent", gmail_node)
-builder.add_node("calendar_agent", calendar_node)
+builder.add_node("gmail_agent", gmail_agent)
+builder.add_node("calendar_agent", calendar_agent)
 
 for member in members:
     builder.add_edge(member, "supervisor")
@@ -121,9 +115,6 @@ builder.add_conditional_edges(
 
 builder.add_edge(START, "supervisor")
 
-# HITL Guardrails: We interrupt before the gmail_agent and calendar_agent
-# because they contain sensitive email drafting/sending and event creation logic.
 supervisor_graph = builder.compile(
-    checkpointer=memory,
-    interrupt_before=["gmail_agent", "calendar_agent"] 
+    checkpointer=memory
 )

@@ -19,6 +19,10 @@ class EpisodicLog(Base):
     status = Column(String, nullable=False, default="started")
     latency_ms = Column(Float, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
+    action_taken = Column(String, nullable=True)
+    original_args = Column(JSON, nullable=True)
+    modified_args = Column(JSON, nullable=True)
+    human_feedback = Column(Text, nullable=True)
 
 class UserToken(Base):
     __tablename__ = "user_tokens"

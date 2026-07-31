@@ -22,5 +22,6 @@ calendar_agent = create_react_agent(
     llm,
     tools=[check_calendar_availability, create_calendar_event],
     prompt=system_prompt,
-    name="calendar_agent"
+    name="calendar_agent",
+    interrupt_before=["tools"]
 )

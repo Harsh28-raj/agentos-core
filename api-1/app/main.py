@@ -6,7 +6,7 @@ import asyncio
 import PyPDF2
 from dotenv import load_dotenv
 from contextlib import asynccontextmanager
-from typing import Literal
+from typing import Literal, Dict, Any, Optional
 
 from fastapi import FastAPI, HTTPException, File, UploadFile
 from fastapi.responses import StreamingResponse
@@ -72,7 +72,9 @@ class ChatRequest(BaseModel):
 class ApproveRequest(BaseModel):
     thread_id: str = "default_user"
     user_id: str = "default_user"
-    action: Literal["CONFIRM", "REJECT"]
+    action: Literal["CONFIRM", "REJECT", "EDIT"]
+    updated_args: Optional[Dict[str, Any]] = None
+    feedback_message: Optional[str] = None
 
 @app.get("/")
 async def root():
@@ -105,25 +107,108 @@ async def chat_endpoint(request: ChatRequest):
 @app.post("/api/chat/approve")
 async def approve_hitl(request: ApproveRequest):
     """
-    Endpoint to confirm or reject a pending HITL paused action.
+    Endpoint to confirm, reject, or edit a pending HITL paused action.
     """
     try:
         config = {"configurable": {"thread_id": request.user_id, "user_id": request.user_id}}
-        state = agent_executor.get_state(config)
         
-        if not state.next:
+        # We need to get the subgraph state where the actual tool call is paused
+        state = agent_executor.get_state(config, subgraphs=True)
+        
+        # Check if parent or any subgraph is paused
+        parent_state = agent_executor.get_state(config)
+        if not parent_state.next and not state.tasks:
             return {"status": "error", "message": "No pending execution paused."}
+            
+        # Find the paused subgraph task if it's paused in a subgraph
+        active_subgraph_task = None
+        if state.tasks:
+            active_subgraph_task = state.tasks[0]
+            
+        # Extract pending tool call from subgraph state if available
+        original_args = None
+        pending_msg = None
+        tool_call_id = None
+        subgraph_config = None
         
-        if request.action == "CONFIRM":
-            # Resume graph by passing None for input
+        if active_subgraph_task and active_subgraph_task.state and active_subgraph_task.state.values.get("messages"):
+            subgraph_config = active_subgraph_task.state.config
+            messages = active_subgraph_task.state.values["messages"]
+            if messages:
+                pending_msg = messages[-1]
+                if getattr(pending_msg, "tool_calls", None) and len(pending_msg.tool_calls) > 0:
+                    original_args = pending_msg.tool_calls[0].get("args")
+                    tool_call_id = pending_msg.tool_calls[0].get("id")
+
+        if request.action == "EDIT":
+            if not request.updated_args:
+                return {"status": "error", "message": "updated_args is required for EDIT action"}
+            if not pending_msg or not subgraph_config:
+                return {"status": "error", "message": "Could not locate a pending tool call to edit."}
+                
+            # Clone the message and override the args
+            new_tool_calls = list(pending_msg.tool_calls)
+            new_tool_calls[0]["args"] = request.updated_args
+            
+            # Create a new AIMessage with the updated tool calls
+            from langchain_core.messages import AIMessage
+            modified_msg = AIMessage(
+                content=pending_msg.content,
+                tool_calls=new_tool_calls,
+                id=pending_msg.id  # Must use the same ID to overwrite it in LangGraph state
+            )
+            
+            # Update the subgraph state
+            agent_executor.update_state(subgraph_config, {"messages": [modified_msg]})
+            
+            # Log the event
+            await log_episodic_event(
+                thread_id=request.user_id,
+                run_id=tool_call_id or "edit",
+                tool_name="HITL_EDIT",
+                action_taken="EDIT",
+                original_args=original_args,
+                modified_args=request.updated_args,
+                human_feedback=request.feedback_message,
+                status="completed"
+            )
+
+            # Resume
+            await agent_executor.ainvoke(None, config=config, recursion_limit=10)
+            return {"status": "resumed", "message": "Action edited and resumed."}
+            
+        elif request.action == "CONFIRM":
+            # Log the event
+            await log_episodic_event(
+                thread_id=request.user_id,
+                run_id=tool_call_id or "confirm",
+                tool_name="HITL_CONFIRM",
+                action_taken="CONFIRM",
+                original_args=original_args,
+                status="completed"
+            )
             await agent_executor.ainvoke(None, config=config, recursion_limit=10)
             return {"status": "resumed", "message": "Action approved and resumed."}
+            
         else:
             # Inject a rejection message and resume
             agent_executor.update_state(config, {"messages": [HumanMessage(content="The user REJECTED the action. Do not proceed.")]})
+            
+            # Log the event
+            await log_episodic_event(
+                thread_id=request.user_id,
+                run_id=tool_call_id or "reject",
+                tool_name="HITL_REJECT",
+                action_taken="REJECT",
+                original_args=original_args,
+                status="completed"
+            )
+            
             await agent_executor.ainvoke(None, config=config, recursion_limit=10)
             return {"status": "rejected", "message": "Action rejected and graph updated."}
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/chat/stream")
@@ -240,11 +325,36 @@ async def chat_stream_endpoint(request: ChatRequest):
                     yield f"data: {error_payload}\n\n"
 
             # Check if graph paused due to HITL
-            final_state = agent_executor.get_state(config)
-            if final_state.next:
+            final_state = agent_executor.get_state(config, subgraphs=True)
+            parent_state = agent_executor.get_state(config)
+            
+            is_paused = False
+            paused_agent = None
+            pending_tool = None
+            pending_args = None
+            
+            if parent_state.next:
+                is_paused = True
+                paused_agent = str(parent_state.next)
+            elif final_state.tasks:
+                is_paused = True
+                subgraph_task = final_state.tasks[0]
+                paused_agent = subgraph_task.name
+                
+                # Extract pending args
+                if subgraph_task.state and subgraph_task.state.values.get("messages"):
+                    msgs = subgraph_task.state.values["messages"]
+                    if msgs and getattr(msgs[-1], "tool_calls", None) and len(msgs[-1].tool_calls) > 0:
+                        pending_tool = msgs[-1].tool_calls[0].get("name")
+                        pending_args = msgs[-1].tool_calls[0].get("args")
+
+            if is_paused:
                 hitl_payload = json.dumps({
                     "type": "hitl_pause",
-                    "content": f"Execution paused. Awaiting human approval to proceed with {final_state.next}."
+                    "content": f"Execution paused. Awaiting human approval for {paused_agent}.",
+                    "agent": paused_agent,
+                    "tool": pending_tool,
+                    "pending_args": pending_args
                 })
                 yield f"data: {hitl_payload}\n\n"
             else:

@@ -52,24 +52,32 @@ async def log_episodic_event(
     tool_input: dict = None,
     tool_output: dict = None,
     reasoning_steps: list = None,
-    latency_ms: float = None
+    latency_ms: float = None,
+    action_taken: str = None,
+    original_args: dict = None,
+    modified_args: dict = None,
+    human_feedback: str = None
 ):
     if not AsyncSessionLocal:
         return
     
     try:
         async with AsyncSessionLocal() as session:
-            new_log = EpisodicLog(
+            log_entry = EpisodicLog(
                 thread_id=thread_id,
                 run_id=run_id,
-                status=status,
                 tool_name=tool_name,
                 tool_input=tool_input,
                 tool_output=tool_output,
                 reasoning_steps=reasoning_steps,
-                latency_ms=latency_ms
+                status=status,
+                latency_ms=latency_ms,
+                action_taken=action_taken,
+                original_args=original_args,
+                modified_args=modified_args,
+                human_feedback=human_feedback
             )
-            session.add(new_log)
+            session.add(log_entry)
             await session.commit()
     except Exception as e:
-        print(f"Error logging episodic event: {e}")
+        print(f"Error logging to postgres: {e}")
