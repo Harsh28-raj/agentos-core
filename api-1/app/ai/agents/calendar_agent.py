@@ -7,8 +7,7 @@ from app.ai.tools.calendar_tools import check_calendar_availability, create_cale
 
 llm = ChatGroq(groq_api_key=os.getenv("GROQ_API_KEY"), 
     model="llama-3.1-8b-instant",
-    max_retries=2, temperature=0.2,
-    temperature=0
+    max_retries=2, temperature=0.2
 )
 
 system_prompt = SystemMessage(content="""You are the Calendar Agent.

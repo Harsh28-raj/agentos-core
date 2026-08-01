@@ -67,8 +67,7 @@ try:
     groq_api_key = os.getenv("GROQ_API_KEY")
     llm = ChatGroq(
         model="llama-3.1-8b-instant",
-    max_retries=2, temperature=0.2, 
-        temperature=0.7,
+    max_retries=2, temperature=0.2,
         max_tokens=1024,
         api_key=groq_api_key
     )
