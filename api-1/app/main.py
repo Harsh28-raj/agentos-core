@@ -90,7 +90,7 @@ class ApproveRequest(BaseModel):
 async def root():
     return {"status": "AgentOS Backend is running smoothly! 🚀"}
 
-@app.post("/api/chat")
+@app.post("/api/v1/chat")
 async def chat_endpoint(request: ChatRequest):
     try:
         messages = [HumanMessage(content=request.message)]
@@ -118,7 +118,7 @@ async def chat_endpoint(request: ChatRequest):
         logging.error(traceback.format_exc())
         return {"reply": "An internal error occurred while processing your request. Please check your API keys and try again later."}
 
-@app.post("/api/chat/approve")
+@app.post("/api/v1/chat/approve")
 async def approve_hitl(request: ApproveRequest):
     """
     Endpoint to confirm, reject, or edit a pending HITL paused action.
@@ -225,7 +225,7 @@ async def approve_hitl(request: ApproveRequest):
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.post("/api/chat/stream")
+@app.post("/api/v1/chat/stream")
 async def chat_stream_endpoint(request: ChatRequest):
     """
     Streams Agent execution events (Thought, Routing, Tool Start/End, Tokens)
@@ -393,7 +393,7 @@ async def chat_stream_endpoint(request: ChatRequest):
     return StreamingResponse(event_generator(), media_type="text/event-stream")
 
 
-@app.get("/api/chat/history/{thread_id}")
+@app.get("/api/v1/chat/history/{thread_id}")
 def get_chat_history(thread_id: str):
     try:
         config = {"configurable": {"thread_id": thread_id}}
@@ -420,7 +420,7 @@ def get_chat_history(thread_id: str):
         print("History Fetch Error:", str(e))
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.delete("/api/chat/history/{thread_id}")
+@app.delete("/api/v1/chat/history/{thread_id}")
 async def delete_chat_history(thread_id: str):
     try:
         if redis_conn is None:
@@ -440,7 +440,7 @@ async def delete_chat_history(thread_id: str):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.post("/api/upload")
+@app.post("/api/v1/upload")
 async def upload_file(file: UploadFile = File(...)):
     try:
         file_content = await file.read()
