@@ -67,7 +67,8 @@ try:
     groq_api_key = os.getenv("GROQ_API_KEY")
     llm = ChatGroq(
         model="llama-3.1-8b-instant",
-    max_retries=5, 
+    max_retries=3,
+    request_timeout=30.0, 
         temperature=0.7,
         max_tokens=1024,
         api_key=groq_api_key
@@ -103,7 +104,7 @@ async def chat_endpoint(request: ChatRequest):
         payload = None if is_resuming else {"messages": messages}
         
         # Agent Execution with recursion guardrail
-        response = await agent_executor.ainvoke(payload, config=config, recursion_limit=10)
+        response = await agent_executor.ainvoke(payload, config=config, recursion_limit=5)
         
         # Check if paused
         final_state = agent_executor.get_state(config)
@@ -117,7 +118,7 @@ async def chat_endpoint(request: ChatRequest):
         import traceback
         logging.error(f"Error in /api/v1/chat: {str(e)}")
         logging.error(traceback.format_exc())
-        return {"reply": f"ERROR DETAILS: {str(e)}"}
+        return {"reply": "An internal error occurred while processing your request. Please check your API keys and try again later."}
 
 @app.post("/api/v1/chat/approve")
 async def approve_hitl(request: ApproveRequest):
@@ -189,7 +190,7 @@ async def approve_hitl(request: ApproveRequest):
             )
 
             # Resume
-            await agent_executor.ainvoke(None, config=config, recursion_limit=10)
+            await agent_executor.ainvoke(None, config=config, recursion_limit=5)
             return {"status": "resumed", "message": "Action edited and resumed."}
             
         elif request.action == "CONFIRM":
@@ -202,7 +203,7 @@ async def approve_hitl(request: ApproveRequest):
                 original_args=original_args,
                 status="completed"
             )
-            await agent_executor.ainvoke(None, config=config, recursion_limit=10)
+            await agent_executor.ainvoke(None, config=config, recursion_limit=5)
             return {"status": "resumed", "message": "Action approved and resumed."}
             
         else:
@@ -219,7 +220,7 @@ async def approve_hitl(request: ApproveRequest):
                 status="completed"
             )
             
-            await agent_executor.ainvoke(None, config=config, recursion_limit=10)
+            await agent_executor.ainvoke(None, config=config, recursion_limit=5)
             return {"status": "rejected", "message": "Action rejected and graph updated."}
     except Exception as e:
         import traceback
@@ -260,7 +261,7 @@ async def chat_stream_endpoint(request: ChatRequest):
                 payload_input,
                 config=config,
                 version="v2",
-                recursion_limit=10
+                recursion_limit=5
             ):
                 try:
                     event_type = event.get("event")
@@ -388,7 +389,7 @@ async def chat_stream_endpoint(request: ChatRequest):
             import traceback
             logging.error(f"Error in /api/v1/chat/stream: {str(e)}")
             logging.error(traceback.format_exc())
-            error_payload = json.dumps({"type": "error", "content": f"ERROR DETAILS: {str(e)}"})
+            error_payload = json.dumps({"type": "error", "content": "An internal error occurred while processing your request. Please check your API keys and try again later."})
             yield f"data: {error_payload}\n\n"
 
     return StreamingResponse(event_generator(), media_type="text/event-stream")

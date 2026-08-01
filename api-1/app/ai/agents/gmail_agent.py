@@ -7,7 +7,8 @@ from app.ai.tools.gmail import search_emails, read_email_content, draft_email, s
 
 llm = ChatGroq(groq_api_key=os.getenv("GROQ_API_KEY"), 
     model="llama-3.1-8b-instant",
-    max_retries=5,
+    max_retries=3,
+    request_timeout=30.0,
     temperature=0
 )
 
