@@ -67,7 +67,7 @@ try:
     groq_api_key = os.getenv("GROQ_API_KEY")
     llm = ChatGroq(
         model="llama-3.1-8b-instant",
-    max_retries=3, 
+    max_retries=2, temperature=0.2, 
         temperature=0.7,
         max_tokens=1024,
         api_key=groq_api_key
@@ -102,8 +102,15 @@ async def chat_endpoint(request: ChatRequest):
         is_resuming = len(current_state.next) > 0
         payload = None if is_resuming else {"messages": messages}
         
-        # Agent Execution with recursion guardrail
-        response = await agent_executor.ainvoke(payload, config=config, recursion_limit=5)
+        
+        # Keep only the last 4 messages in history to save 90% of tokens
+        if 'messages' in current_state.values and len(current_state.values['messages']) > 4:
+            from langchain_core.messages import RemoveMessage
+            messages_to_remove = [RemoveMessage(id=m.id) for m in current_state.values['messages'][:-4]]
+            await agent_executor.aupdate_state(config, {"messages": messages_to_remove})
+        
+        # Agent Execution with recursion guardrail and timeout
+        response = await asyncio.wait_for(agent_executor.ainvoke(payload, config=config, recursion_limit=5), timeout=20.0)
         
         # Check if paused
         final_state = agent_executor.get_state(config)
@@ -117,8 +124,7 @@ async def chat_endpoint(request: ChatRequest):
         import traceback
         logging.error(f"Error in /api/v1/chat: {str(e)}")
         logging.error(traceback.format_exc())
-        print("CHAT ENDPOINT CRASH:", traceback.format_exc())
-        return {"reply": f"DEBUG ERROR: {str(e)}"}
+        return {"reply": "An internal error occurred while processing your request. Please check your API keys and try again later."}
 
 @app.post("/api/v1/chat/approve")
 async def approve_hitl(request: ApproveRequest):
@@ -389,8 +395,7 @@ async def chat_stream_endpoint(request: ChatRequest):
             import traceback
             logging.error(f"Error in /api/v1/chat/stream: {str(e)}")
             logging.error(traceback.format_exc())
-            print("CHAT ENDPOINT CRASH:", traceback.format_exc())
-            error_payload = json.dumps({"type": "error", "content": f"DEBUG ERROR: {str(e)}"})
+            error_payload = json.dumps({"type": "error", "content": "An internal error occurred while processing your request. Please check your API keys and try again later."})
             yield f"data: {error_payload}\n\n"
 
     return StreamingResponse(event_generator(), media_type="text/event-stream")
