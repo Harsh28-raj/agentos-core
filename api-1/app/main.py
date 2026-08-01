@@ -98,18 +98,26 @@ async def chat_endpoint(request: ChatRequest):
         payload = None if is_resuming else {"messages": messages}
         
         
-        # Keep only the last 4 messages in history safely
-        history = current_state.values.get('messages', [])
-        if isinstance(history, list) and len(history) > 4:
+        # Safe History Slicing (DO NOT assign directly to memory.messages)
+        if hasattr(memory, "chat_memory"):
+            raw_msgs = memory.chat_memory.messages
+        elif hasattr(memory, "messages"):
+            raw_msgs = memory.messages
+        else:
+            raw_msgs = current_state.values.get('messages', [])
+            
+        trimmed_msgs = raw_msgs[-4:] if len(raw_msgs) > 4 else raw_msgs
+        
+        # In LangGraph v0.2.x, we must carefully update state to trim history without mutating frozen objects.
+        # If removing messages causes crashes, we will just rely on the payload or let it grow if RemoveMessage fails.
+        if len(raw_msgs) > 4:
             try:
                 from langchain_core.messages import RemoveMessage
-                msgs_to_remove = history[:-4]
+                msgs_to_remove = raw_msgs[:-4]
                 remove_payload = {"messages": [RemoveMessage(id=m.id) for m in msgs_to_remove if hasattr(m, 'id') and m.id]}
                 agent_executor.update_state(config, remove_payload)
-                current_state = agent_executor.get_state(config)
-            except Exception as e:
-                import logging
-                logging.warning(f"Could not remove old messages: {e}")
+            except Exception:
+                pass
         
         # Agent Execution with recursion guardrail and timeout
         response = await asyncio.wait_for(agent_executor.ainvoke(payload, config=config, recursion_limit=5), timeout=20.0)
@@ -119,14 +127,21 @@ async def chat_endpoint(request: ChatRequest):
         if final_state.next:
             return {"reply": f"⏸️ Execution paused. Awaiting human approval to proceed with {final_state.next[0]}."}
             
-        final_reply = response["messages"][-1].content
+        # Safe Output Extraction
+        if isinstance(response, dict):
+            final_reply = response.get("output") or response.get("result")
+            if not final_reply and "messages" in response and response["messages"]:
+                final_reply = response["messages"][-1].content
+            elif not final_reply:
+                final_reply = str(response)
+        else:
+            final_reply = str(response)
+            
         return {"reply": final_reply}
     except Exception as e:
-        import logging
         import traceback
-        logging.error(f"Error in /api/v1/chat: {str(e)}")
-        logging.error(traceback.format_exc())
-        return {"reply": "An internal error occurred while processing your request. Please check your API keys and try again later."}
+        print("CHAT ROUTER ERROR:", traceback.format_exc())
+        return {"reply": f"PYTHON ERROR: {type(e).__name__} - {str(e)}"}
 
 @app.post("/api/v1/chat/approve")
 async def approve_hitl(request: ApproveRequest):
