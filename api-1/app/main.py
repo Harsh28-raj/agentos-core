@@ -64,10 +64,12 @@ app.include_router(auth_router)
 # Initialize Groq LLM
 llm = None
 try:
+    groq_api_key = os.getenv("GROQ_API_KEY")
     llm = ChatGroq(
         model="llama-3.3-70b-versatile", 
         temperature=0.7,
-        max_tokens=1024
+        max_tokens=1024,
+        api_key=groq_api_key
     )
 except Exception as e:
     print(f"⚠️ Error initializing Groq LLM: {e}")
@@ -110,7 +112,11 @@ async def chat_endpoint(request: ChatRequest):
         final_reply = response["messages"][-1].content
         return {"reply": final_reply}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        import logging
+        import traceback
+        logging.error(f"Error in /api/chat: {str(e)}")
+        logging.error(traceback.format_exc())
+        return {"reply": "An internal error occurred while processing your request. Please check your API keys and try again later."}
 
 @app.post("/api/chat/approve")
 async def approve_hitl(request: ApproveRequest):
@@ -377,9 +383,12 @@ async def chat_stream_endpoint(request: ChatRequest):
                 yield f"data: {done_payload}\n\n"
                 
         except Exception as e:
-            if str(e):
-                error_payload = json.dumps({"type": "error", "content": str(e)})
-                yield f"data: {error_payload}\n\n"
+            import logging
+            import traceback
+            logging.error(f"Error in /api/chat/stream: {str(e)}")
+            logging.error(traceback.format_exc())
+            error_payload = json.dumps({"type": "error", "content": "An internal error occurred while processing your request. Please check your API keys and try again later."})
+            yield f"data: {error_payload}\n\n"
 
     return StreamingResponse(event_generator(), media_type="text/event-stream")
 

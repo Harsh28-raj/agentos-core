@@ -26,6 +26,7 @@ def get_weather(location: str) -> str:
 # --- 2. Live Web Search Tool (Tavily) ---
 web_search_tool = TavilySearchResults(
     max_results=3,
+    tavily_api_key=tavily_key,
     description="Useful for when you need to answer questions about current events, real-time info, or live web data."
 )
 

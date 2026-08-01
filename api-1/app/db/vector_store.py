@@ -6,7 +6,7 @@ from langchain_community.embeddings import FastEmbedEmbeddings
 # Load environment variables
 load_dotenv()
 
-DATABASE_URL = os.getenv("NEON_DATABASE_URL", "")
+DATABASE_URL = os.getenv("DATABASE_URL") or os.getenv("NEON_DATABASE_URL", "")
 # langchain_postgres requires psycopg3 sync or async URL. For simplicity, we use sync.
 # Convert postgresql+asyncpg:// to postgresql+psycopg:// if needed, or just standard postgresql://
 if "asyncpg" in DATABASE_URL:
