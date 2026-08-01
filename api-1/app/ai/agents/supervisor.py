@@ -111,8 +111,7 @@ builder.add_conditional_edges(
         "gmail_agent": "gmail_agent",
         "calendar_agent": "calendar_agent",
         "FINISH": END
-    }"
-You must output tool calls in valid JSON structure only. Do not wrap function calls in raw XML tags like <function>."
+    }
 )
 
 builder.add_edge(START, "supervisor")
