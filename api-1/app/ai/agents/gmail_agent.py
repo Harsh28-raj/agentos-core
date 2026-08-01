@@ -6,7 +6,7 @@ from langchain_core.messages import SystemMessage
 from app.ai.tools.gmail import search_emails, read_email_content, draft_email, send_email
 
 llm = ChatGroq(api_key=os.getenv("GROQ_API_KEY"), 
-    model="llama3-8b-8192",
+    model="llama-3.3-70b-versatile",
     temperature=0
 )
 
