@@ -19,9 +19,6 @@ else:
     memory = MemorySaver()
 
 llm = ChatGroq(model="llama-3.1-8b-instant", groq_api_key=os.getenv("GROQ_API_KEY"), max_retries=2, temperature=0.2)
-    model="llama-3.1-8b-instant",
-    max_retries=2, temperature=0.2
-)
 SYSTEM_PROMPT = """You are a helpful assistant.
 
 EMAIL EXECUTION POLICY & SAFEGUARDS:
