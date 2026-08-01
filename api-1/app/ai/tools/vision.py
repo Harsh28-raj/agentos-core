@@ -27,7 +27,7 @@ def analyze_image(image_path: str, prompt: str = "Extract and summarize the text
         if not groq_api_key:
             return "Error: GROQ_API_KEY environment variable is missing."
 
-        vision_llm = ChatGroq(model="llama-3.1-8b-instant", groq_api_key=os.getenv("GROQ_API_KEY"), max_retries=2, temperature=0.2)
+        vision_llm = ChatGroq(model="llama-3.1-8b-instant", groq_api_key=os.getenv("GROQ_API_KEY"), max_retries=2, temperature=0.2, timeout=60.0)
         
         msg = vision_llm.invoke(
             [

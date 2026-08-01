@@ -65,7 +65,7 @@ app.include_router(auth_router)
 llm = None
 try:
     groq_api_key = os.getenv("GROQ_API_KEY")
-    llm = ChatGroq(model="llama-3.1-8b-instant", groq_api_key=os.getenv("GROQ_API_KEY"), max_retries=2, temperature=0.2)
+    llm = ChatGroq(model="llama-3.1-8b-instant", groq_api_key=os.getenv("GROQ_API_KEY"), max_retries=2, temperature=0.2, timeout=60.0)
 except Exception as e:
     print(f"⚠️ Error initializing Groq LLM: {e}")
 
@@ -120,7 +120,7 @@ async def chat_endpoint(request: ChatRequest):
                 pass
         
         # Agent Execution with recursion guardrail and timeout
-        response = await asyncio.wait_for(agent_executor.ainvoke(payload, config=config, recursion_limit=5), timeout=20.0)
+        response = await asyncio.wait_for(agent_executor.ainvoke(payload, config=config, recursion_limit=5), timeout=60.0)
         
         # Check if paused
         final_state = agent_executor.get_state(config)
@@ -501,7 +501,7 @@ async def upload_file(file: UploadFile = File(...)):
             if not groq_api_key:
                 raise HTTPException(status_code=500, detail="GROQ_API_KEY environment variable is missing.")
 
-            vision_llm = ChatGroq(model="llama-3.1-8b-instant", groq_api_key=os.getenv("GROQ_API_KEY"), max_retries=2, temperature=0.2)
+            vision_llm = ChatGroq(model="llama-3.1-8b-instant", groq_api_key=os.getenv("GROQ_API_KEY"), max_retries=2, temperature=0.2, timeout=60.0)
             msg = vision_llm.invoke(
                 [
                     {
