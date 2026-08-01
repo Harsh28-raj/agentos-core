@@ -66,7 +66,8 @@ prompt = ChatPromptTemplate.from_messages([
 ]).partial(options=str(options), members=", ".join(members))
 
 def supervisor_node(state: AgentState) -> dict:
-    supervisor_chain = prompt | llm.with_structured_output(RouteResponse)
+    # Force json_mode to bypass Groq's buggy native XML tool parser
+    supervisor_chain = prompt | llm.with_structured_output(RouteResponse, method="json_mode")
     res = supervisor_chain.invoke(state)
     print(f"=== SUPERVISOR ROUTING TO: {res.next} ===")
     return {"next": res.next}
