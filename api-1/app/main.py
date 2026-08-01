@@ -120,7 +120,7 @@ async def chat_endpoint(request: ChatRequest):
                 pass
         
         # Ensure recursion_limit is inside config dictionary for LangGraph
-        config["recursion_limit"] = 5
+        config["recursion_limit"] = 50
         
         # Agent Execution with recursion guardrail and timeout (120s)
         response = await asyncio.wait_for(agent_executor.ainvoke(payload, config=config), timeout=120.0)
@@ -298,7 +298,7 @@ async def chat_stream_endpoint(request: ChatRequest):
             total_input_tokens = 0
             total_output_tokens = 0
 
-            config["recursion_limit"] = 5
+            config["recursion_limit"] = 50
             # 2. Consume LangGraph v2 Event Stream
             async for event in agent_executor.astream_events(
                 payload_input,
