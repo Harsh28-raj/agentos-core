@@ -49,3 +49,27 @@ async def login(request: AuthRequest, db: AsyncSession = Depends(get_db)):
         
     access_token = create_access_token(data={"sub": user.email})
     return {"access_token": access_token, "token_type": "bearer", "user": {"email": user.email, "id": user.id}}
+
+from fastapi import Header
+from app.core.security import SECRET_KEY, ALGORITHM
+import jwt
+
+@router.get("/me")
+async def get_me(authorization: str = Header(None), db: AsyncSession = Depends(get_db)):
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Invalid token")
+    token = authorization.split(" ")[1]
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        email: str = payload.get("sub")
+        if email is None:
+            raise HTTPException(status_code=401, detail="Invalid credentials")
+    except jwt.PyJWTError:
+        raise HTTPException(status_code=401, detail="Invalid credentials")
+        
+    result = await db.execute(select(User).where(User.email == email))
+    user = result.scalars().first()
+    if user is None:
+        raise HTTPException(status_code=404, detail="User not found")
+        
+    return {"id": user.id, "email": user.email}
