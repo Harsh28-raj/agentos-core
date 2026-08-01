@@ -117,6 +117,5 @@ builder.add_conditional_edges(
 builder.add_edge(START, "supervisor")
 
 supervisor_graph = builder.compile(
-    checkpointer=memory"
-You must output tool calls in valid JSON structure only. Do not wrap function calls in raw XML tags like <function>."
+    checkpointer=memory
 )
