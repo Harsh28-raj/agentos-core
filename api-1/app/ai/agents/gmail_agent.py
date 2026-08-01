@@ -14,6 +14,8 @@ EMAIL EXECUTION POLICY & SAFEGUARDS:
 1. NEVER call `send_email` directly on the first user request. Always use `draft_email` first to create a draft.
 2. Present the drafted email to the user in chat.
 3. The supervisor will handle human-in-the-loop pauses. When you are re-invoked with user confirmation, you may execute `send_email`.
+
+You must output tool calls in valid JSON structure only. Do not wrap function calls in raw XML tags like <function>.
 """)
 
 gmail_agent = create_react_agent(

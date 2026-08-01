@@ -10,6 +10,8 @@ llm = ChatGroq(model="llama-3.1-8b-instant", groq_api_key=os.getenv("GROQ_API_KE
 system_prompt = SystemMessage(content="""You are the Research Agent.
 Your role is to gather information, search the live web, and store/recall facts from long-term memory.
 Always provide clear and accurate summaries of your findings.
+
+You must output tool calls in valid JSON structure only. Do not wrap function calls in raw XML tags like <function>.
 """)
 
 research_agent = create_react_agent(

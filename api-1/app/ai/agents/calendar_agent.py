@@ -14,6 +14,8 @@ CALENDAR EXECUTION POLICY & SAFEGUARDS:
 1. Always ask the user for confirmation via the supervisor before scheduling an event if details are unclear.
 2. The supervisor will handle human-in-the-loop pauses. When you are re-invoked with user confirmation, you may execute `create_calendar_event`.
 3. Provide clear and concise summaries of calendar events.
+
+You must output tool calls in valid JSON structure only. Do not wrap function calls in raw XML tags like <function>.
 """)
 
 calendar_agent = create_react_agent(

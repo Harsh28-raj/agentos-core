@@ -55,7 +55,8 @@ system_prompt = (
     "If the user wants to read or send emails, route to gmail_agent. "
     "If the user is approving an email, route to gmail_agent. "
     "If the user wants to check their schedule or create a calendar event, route to calendar_agent. "
-    "If the user is approving a calendar event, route to calendar_agent."
+    "If the user is approving a calendar event, route to calendar_agent.""
+You must output tool calls in valid JSON structure only. Do not wrap function calls in raw XML tags like <function>."
 )
 
 prompt = ChatPromptTemplate.from_messages([
@@ -110,11 +111,13 @@ builder.add_conditional_edges(
         "gmail_agent": "gmail_agent",
         "calendar_agent": "calendar_agent",
         "FINISH": END
-    }
+    }"
+You must output tool calls in valid JSON structure only. Do not wrap function calls in raw XML tags like <function>."
 )
 
 builder.add_edge(START, "supervisor")
 
 supervisor_graph = builder.compile(
-    checkpointer=memory
+    checkpointer=memory"
+You must output tool calls in valid JSON structure only. Do not wrap function calls in raw XML tags like <function>."
 )

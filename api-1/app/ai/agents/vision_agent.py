@@ -10,6 +10,8 @@ llm = ChatGroq(model="llama-3.1-8b-instant", groq_api_key=os.getenv("GROQ_API_KE
 system_prompt = SystemMessage(content="""You are the Vision Agent.
 Your role is to analyze images, perform OCR, and extract insights from visual data.
 Be highly descriptive and accurate.
+
+You must output tool calls in valid JSON structure only. Do not wrap function calls in raw XML tags like <function>.
 """)
 
 vision_agent = create_react_agent(
