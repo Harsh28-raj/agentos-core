@@ -65,12 +65,7 @@ app.include_router(auth_router)
 llm = None
 try:
     groq_api_key = os.getenv("GROQ_API_KEY")
-    llm = ChatGroq(
-        model="llama-3.1-8b-instant",
-    max_retries=2, temperature=0.2,
-        max_tokens=1024,
-        api_key=groq_api_key
-    )
+    llm = ChatGroq(model="llama-3.1-8b-instant", groq_api_key=os.getenv("GROQ_API_KEY"), max_retries=2, temperature=0.2)
 except Exception as e:
     print(f"⚠️ Error initializing Groq LLM: {e}")
 
@@ -102,11 +97,12 @@ async def chat_endpoint(request: ChatRequest):
         payload = None if is_resuming else {"messages": messages}
         
         
-        # Keep only the last 4 messages in history to save 90% of tokens
-        if 'messages' in current_state.values and len(current_state.values['messages']) > 4:
-            from langchain_core.messages import RemoveMessage
-            messages_to_remove = [RemoveMessage(id=m.id) for m in current_state.values['messages'][:-4]]
-            await agent_executor.aupdate_state(config, {"messages": messages_to_remove})
+        # Keep only the last 4 messages in history safely
+        history = current_state.values.get('messages', [])
+        if isinstance(history, list) and len(history) > 4:
+            history = history[-4:]
+            # We skip aupdate_state here as it causes crashes with RemoveMessage in some versions
+            # Let LangGraph handle memory naturally or just trim local payload if necessary.
         
         # Agent Execution with recursion guardrail and timeout
         response = await asyncio.wait_for(agent_executor.ainvoke(payload, config=config, recursion_limit=5), timeout=20.0)
@@ -123,7 +119,8 @@ async def chat_endpoint(request: ChatRequest):
         import traceback
         logging.error(f"Error in /api/v1/chat: {str(e)}")
         logging.error(traceback.format_exc())
-        return {"reply": "An internal error occurred while processing your request. Please check your API keys and try again later."}
+        print(traceback.format_exc())
+        return {"reply": f"DEBUG BACKEND CRASH: {type(e).__name__} - {str(e)}"}
 
 @app.post("/api/v1/chat/approve")
 async def approve_hitl(request: ApproveRequest):
@@ -394,7 +391,8 @@ async def chat_stream_endpoint(request: ChatRequest):
             import traceback
             logging.error(f"Error in /api/v1/chat/stream: {str(e)}")
             logging.error(traceback.format_exc())
-            error_payload = json.dumps({"type": "error", "content": "An internal error occurred while processing your request. Please check your API keys and try again later."})
+            print(traceback.format_exc())
+            error_payload = json.dumps({"type": "error", "content": f"DEBUG BACKEND CRASH: {type(e).__name__} - {str(e)}"})
             yield f"data: {error_payload}\n\n"
 
     return StreamingResponse(event_generator(), media_type="text/event-stream")
@@ -465,11 +463,7 @@ async def upload_file(file: UploadFile = File(...)):
             if not groq_api_key:
                 raise HTTPException(status_code=500, detail="GROQ_API_KEY environment variable is missing.")
 
-            vision_llm = ChatGroq(
-                model="qwen/qwen3.6-27b", 
-                max_tokens=500,
-                api_key=groq_api_key
-            )
+            vision_llm = ChatGroq(model="llama-3.1-8b-instant", groq_api_key=os.getenv("GROQ_API_KEY"), max_retries=2, temperature=0.2)
             msg = vision_llm.invoke(
                 [
                     {

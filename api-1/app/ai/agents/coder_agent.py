@@ -5,7 +5,7 @@ from langchain_core.messages import SystemMessage
 
 from app.ai.tools.code_interpreter import python_code_interpreter
 
-llm = ChatGroq(groq_api_key=os.getenv("GROQ_API_KEY"), 
+llm = ChatGroq(model="llama-3.1-8b-instant", groq_api_key=os.getenv("GROQ_API_KEY"), max_retries=2, temperature=0.2), 
     model="llama-3.1-8b-instant",
     max_retries=2, temperature=0.2
 )
