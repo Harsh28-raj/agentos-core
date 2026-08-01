@@ -89,7 +89,8 @@ async def root():
 async def chat_endpoint(request: ChatRequest):
     try:
         messages = [HumanMessage(content=request.message)]
-        config = {"configurable": {"thread_id": request.user_id, "user_id": request.user_id}}
+        session_id = f"agentos_new:{request.user_id}_{request.thread_id}"
+        config = {"configurable": {"thread_id": session_id, "user_id": request.user_id}}
         
         # Check if resuming
         current_state = agent_executor.get_state(config)
@@ -127,7 +128,8 @@ async def approve_hitl(request: ApproveRequest):
     Endpoint to confirm, reject, or edit a pending HITL paused action.
     """
     try:
-        config = {"configurable": {"thread_id": request.user_id, "user_id": request.user_id}}
+        session_id = f"agentos_new:{request.user_id}_{request.thread_id}"
+        config = {"configurable": {"thread_id": session_id, "user_id": request.user_id}}
         
         # We need to get the subgraph state where the actual tool call is paused
         state = agent_executor.get_state(config, subgraphs=True)
@@ -236,10 +238,11 @@ async def chat_stream_endpoint(request: ChatRequest):
     """
     async def event_generator():
         try:
-            thread_id = request.thread_id if request.thread_id else "default_user"
+            thread_id = request.thread_id if request.thread_id else "default_thread"
             user_id = request.user_id if request.user_id else "default_user"
             messages = [HumanMessage(content=request.message)]
-            config = {"configurable": {"thread_id": thread_id, "user_id": user_id}}
+            session_id = f"agentos_new:{user_id}_{thread_id}"
+            config = {"configurable": {"thread_id": session_id, "user_id": user_id}}
             
             # 1. State check to see if we are resuming from a HITL pause
             current_state = agent_executor.get_state(config)
@@ -397,9 +400,10 @@ async def chat_stream_endpoint(request: ChatRequest):
 
 
 @app.get("/api/v1/chat/history/{thread_id}")
-def get_chat_history(thread_id: str):
+def get_chat_history(thread_id: str, user_id: str = "default_user"):
     try:
-        config = {"configurable": {"thread_id": thread_id}}
+        session_id = f"agentos_new:{user_id}_{thread_id}"
+        config = {"configurable": {"thread_id": session_id}}
         state = agent_executor.get_state(config)
         
         if not state or not getattr(state, "values", None):
@@ -424,7 +428,8 @@ def get_chat_history(thread_id: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.delete("/api/v1/chat/history/{thread_id}")
-async def delete_chat_history(thread_id: str):
+async def delete_chat_history(thread_id: str, user_id: str = "default_user"):
+    session_id = f"agentos_new:{user_id}_{thread_id}"
     try:
         if redis_conn is None:
             return {"status": "success", "message": f"Simulated delete for thread {thread_id} (MemorySaver active)"}
@@ -432,7 +437,7 @@ async def delete_chat_history(thread_id: str):
         cursor = 0
         keys_deleted = 0
         while True:
-            cursor, keys = redis_conn.scan(cursor=cursor, match=f"*{thread_id}*")
+            cursor, keys = redis_conn.scan(cursor=cursor, match=f"*{session_id}*")
             if keys:
                 redis_conn.delete(*keys)
                 keys_deleted += len(keys)
