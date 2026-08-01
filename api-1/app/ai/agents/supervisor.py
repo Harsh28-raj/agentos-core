@@ -68,17 +68,20 @@ prompt = ChatPromptTemplate.from_messages([
 def supervisor_node(state: AgentState) -> dict:
     supervisor_chain = prompt | llm.with_structured_output(RouteResponse)
     res = supervisor_chain.invoke(state)
+    print(f"=== SUPERVISOR ROUTING TO: {res.next} ===")
     return {"next": res.next}
 
 # Helper to invoke a sub-graph node
 def _invoke_agent(agent, state: AgentState) -> dict:
+    print(f"=== INVOKING AGENT: {agent.name} ===")
     res = agent.invoke(state)
-    # The agent returns updated state with new messages.
-    # We take the messages added by the agent. 
-    # Usually the last message is what we want, but returning all messages 
-    # lets add_messages handle appending. We just need to ensure we don't duplicate.
-    # langgraph's create_react_agent returns the full state. We just return its messages.
-    return {"messages": res["messages"][-1:]} # Return only the last message from agent to prevent duplication issues, actually let's return the difference or full list.
+    last_msg = res["messages"][-1]
+    
+    msg_content = last_msg.content if getattr(last_msg, "content", None) else str(last_msg)
+    print(f"=== AGENT {agent.name} RETURNED: {msg_content[:100]}... ===")
+    
+    from langchain_core.messages import HumanMessage
+    return {"messages": [HumanMessage(content=msg_content, name=agent.name)]}
     
 def research_node(state: AgentState):
     return _invoke_agent(research_agent, state)
