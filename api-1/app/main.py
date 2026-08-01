@@ -22,6 +22,7 @@ from app.db.vector_store import add_to_memory
 from app.ai.agents.supervisor import supervisor_graph as agent_executor, redis_conn, memory
 from app.db.postgres import init_db, log_episodic_event
 from app.routers.logs import router as logs_router
+from app.routers.auth import router as auth_router
 import base64
 
 # Load environment variables
@@ -43,6 +44,7 @@ app = FastAPI(
 )
 
 app.include_router(logs_router)
+app.include_router(auth_router)
 
 # Enable CORS for Frontend Development
 app.add_middleware(

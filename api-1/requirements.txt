@@ -25,3 +25,5 @@ cryptography
 pgvector
 psycopg2-binary
 langchain-postgres
+passlib[bcrypt]
+PyJWT
