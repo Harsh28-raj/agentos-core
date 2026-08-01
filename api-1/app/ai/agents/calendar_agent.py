@@ -5,8 +5,8 @@ from langchain_core.messages import SystemMessage
 
 from app.ai.tools.calendar_tools import check_calendar_availability, create_calendar_event
 
-llm = ChatGroq(api_key=os.getenv("GROQ_API_KEY"), 
-    model="llama-3.3-70b-versatile",
+llm = ChatGroq(groq_api_key=os.getenv("GROQ_API_KEY"), 
+    model="llama-3.1-8b-instant",
     temperature=0
 )
 

@@ -18,8 +18,8 @@ else:
     redis_conn = None
     memory = MemorySaver()
 
-llm = ChatGroq(api_key=os.getenv("GROQ_API_KEY"), 
-    model="llama-3.3-70b-versatile",
+llm = ChatGroq(groq_api_key=os.getenv("GROQ_API_KEY"), 
+    model="llama-3.1-8b-instant",
     temperature=0
 )
 SYSTEM_PROMPT = """You are a helpful assistant.

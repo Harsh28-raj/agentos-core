@@ -66,7 +66,7 @@ llm = None
 try:
     groq_api_key = os.getenv("GROQ_API_KEY")
     llm = ChatGroq(
-        model="llama-3.3-70b-versatile", 
+        model="llama-3.1-8b-instant", 
         temperature=0.7,
         max_tokens=1024,
         api_key=groq_api_key
@@ -116,7 +116,7 @@ async def chat_endpoint(request: ChatRequest):
         import traceback
         logging.error(f"Error in /api/v1/chat: {str(e)}")
         logging.error(traceback.format_exc())
-        return {"reply": f"DEBUG ERROR: {str(e)}"}
+        return {"reply": "An internal error occurred while processing your request. Please check your API keys and try again later."}
 
 @app.post("/api/v1/chat/approve")
 async def approve_hitl(request: ApproveRequest):
@@ -387,7 +387,7 @@ async def chat_stream_endpoint(request: ChatRequest):
             import traceback
             logging.error(f"Error in /api/v1/chat/stream: {str(e)}")
             logging.error(traceback.format_exc())
-            error_payload = json.dumps({"type": "error", "content": f"DEBUG ERROR: {str(e)}"})
+            error_payload = json.dumps({"type": "error", "content": "An internal error occurred while processing your request. Please check your API keys and try again later."})
             yield f"data: {error_payload}\n\n"
 
     return StreamingResponse(event_generator(), media_type="text/event-stream")

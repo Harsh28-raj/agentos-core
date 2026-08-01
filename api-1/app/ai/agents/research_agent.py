@@ -5,8 +5,8 @@ from langchain_core.messages import SystemMessage
 
 from app.ai.tools import get_weather, web_search_tool, remember_fact, recall_fact
 
-llm = ChatGroq(api_key=os.getenv("GROQ_API_KEY"), 
-    model="llama-3.3-70b-versatile",
+llm = ChatGroq(groq_api_key=os.getenv("GROQ_API_KEY"), 
+    model="llama-3.1-8b-instant",
     temperature=0
 )
 
