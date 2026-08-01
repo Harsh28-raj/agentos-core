@@ -101,9 +101,15 @@ async def chat_endpoint(request: ChatRequest):
         # Keep only the last 4 messages in history safely
         history = current_state.values.get('messages', [])
         if isinstance(history, list) and len(history) > 4:
-            history = history[-4:]
-            # We skip aupdate_state here as it causes crashes with RemoveMessage in some versions
-            # Let LangGraph handle memory naturally or just trim local payload if necessary.
+            try:
+                from langchain_core.messages import RemoveMessage
+                msgs_to_remove = history[:-4]
+                remove_payload = {"messages": [RemoveMessage(id=m.id) for m in msgs_to_remove if hasattr(m, 'id') and m.id]}
+                agent_executor.update_state(config, remove_payload)
+                current_state = agent_executor.get_state(config)
+            except Exception as e:
+                import logging
+                logging.warning(f"Could not remove old messages: {e}")
         
         # Agent Execution with recursion guardrail and timeout
         response = await asyncio.wait_for(agent_executor.ainvoke(payload, config=config, recursion_limit=5), timeout=20.0)
@@ -246,6 +252,20 @@ async def chat_stream_endpoint(request: ChatRequest):
             
             # 1. State check to see if we are resuming from a HITL pause
             current_state = agent_executor.get_state(config)
+            
+            # Keep only the last 4 messages in history safely
+            history = current_state.values.get('messages', [])
+            if isinstance(history, list) and len(history) > 4:
+                try:
+                    from langchain_core.messages import RemoveMessage
+                    msgs_to_remove = history[:-4]
+                    remove_payload = {"messages": [RemoveMessage(id=m.id) for m in msgs_to_remove if hasattr(m, 'id') and m.id]}
+                    agent_executor.update_state(config, remove_payload)
+                    current_state = agent_executor.get_state(config)
+                except Exception as e:
+                    import logging
+                    logging.warning(f"Could not remove old messages: {e}")
+                    
             is_resuming = len(current_state.next) > 0
             
             payload_input = None if is_resuming else {"messages": messages}
