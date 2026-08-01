@@ -116,7 +116,7 @@ async def chat_endpoint(request: ChatRequest):
         import traceback
         logging.error(f"Error in /api/v1/chat: {str(e)}")
         logging.error(traceback.format_exc())
-        return {"reply": "An internal error occurred while processing your request. Please check your API keys and try again later."}
+        return {"reply": f"ERROR DETAILS: {str(e)}"}
 
 @app.post("/api/v1/chat/approve")
 async def approve_hitl(request: ApproveRequest):
@@ -387,7 +387,7 @@ async def chat_stream_endpoint(request: ChatRequest):
             import traceback
             logging.error(f"Error in /api/v1/chat/stream: {str(e)}")
             logging.error(traceback.format_exc())
-            error_payload = json.dumps({"type": "error", "content": "An internal error occurred while processing your request. Please check your API keys and try again later."})
+            error_payload = json.dumps({"type": "error", "content": f"ERROR DETAILS: {str(e)}"})
             yield f"data: {error_payload}\n\n"
 
     return StreamingResponse(event_generator(), media_type="text/event-stream")
