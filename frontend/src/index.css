@@ -1,0 +1,49 @@
+@import "tailwindcss";
+
+@theme {
+  --font-display: "Space Grotesk", sans-serif;
+  --font-body: "Manrope", sans-serif;
+  --font-mono: "JetBrains Mono", monospace;
+  --radius-base: 6px;
+  --color-paper: rgb(var(--color-paper-rgb) / <alpha-value>);
+  --color-surface: rgb(var(--color-surface-rgb) / <alpha-value>);
+  --color-ink: rgb(var(--color-ink-rgb) / <alpha-value>);
+  --color-slate: rgb(var(--color-slate-rgb) / <alpha-value>);
+  --color-hairline: rgb(var(--color-hairline-rgb) / <alpha-value>);
+  --color-signal: rgb(var(--color-signal-rgb) / <alpha-value>);
+  --color-signal-ink: rgb(var(--color-signal-ink-rgb) / <alpha-value>);
+}
+
+:root {
+  --color-paper-rgb: 250 250 248;
+  --color-surface-rgb: 242 242 237;
+  --color-ink-rgb: 28 28 26;
+  --color-slate-rgb: 107 107 101;
+  --color-hairline-rgb: 228 228 223;
+  --color-signal-rgb: 232 135 30;
+  --color-signal-ink-rgb: 28 20 8;
+  --radius-base: 6px;
+}
+
+.dark {
+  --color-paper-rgb: 24 24 27;
+  --color-surface-rgb: 32 32 36;
+  --color-ink-rgb: 240 240 235;
+  --color-slate-rgb: 148 148 140;
+  --color-hairline-rgb: 42 42 46;
+  --color-signal-rgb: 232 135 30;
+  --color-signal-ink-rgb: 28 20 8;
+}
+
+body {
+  background-color: rgb(var(--color-paper-rgb));
+  color: rgb(var(--color-ink-rgb));
+  font-family: var(--font-body);
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+/* Base focus style */
+*:focus-visible {
+  outline: 2px solid rgb(var(--color-signal-rgb));
+  outline-offset: 2px;
+}
