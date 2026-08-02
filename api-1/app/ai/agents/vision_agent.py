@@ -5,7 +5,7 @@ from langchain_core.messages import SystemMessage
 
 from app.ai.tools.vision import analyze_image
 
-llm = ChatGroq(model="llama-3.1-8b-instant", groq_api_key=os.getenv("GROQ_API_KEY"), max_retries=2, temperature=0.2, timeout=60.0)
+llm = ChatGroq(model="llama-3.1-8b-instant", groq_api_key=os.getenv("GROQ_API_KEY"), max_retries=0, temperature=0.2, timeout=60.0)
 
 system_prompt = SystemMessage(content="""You are the Vision Agent.
 Your role is to analyze images, perform OCR, and extract insights from visual data.

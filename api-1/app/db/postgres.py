@@ -18,6 +18,8 @@ if "?" in DATABASE_URL:
 engine = create_async_engine(
     DATABASE_URL, 
     echo=False,
+    pool_pre_ping=True,
+    pool_recycle=300,
     connect_args={"ssl": "require"}
 ) if DATABASE_URL else None
 AsyncSessionLocal = sessionmaker(bind=engine, class_=AsyncSession, expire_on_commit=False) if engine else None

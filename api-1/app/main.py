@@ -65,7 +65,7 @@ app.include_router(auth_router)
 llm = None
 try:
     groq_api_key = os.getenv("GROQ_API_KEY")
-    llm = ChatGroq(model="llama-3.1-8b-instant", groq_api_key=os.getenv("GROQ_API_KEY"), max_retries=2, temperature=0.2, timeout=60.0)
+    llm = ChatGroq(model="llama-3.1-8b-instant", groq_api_key=os.getenv("GROQ_API_KEY"), max_retries=0, temperature=0.2, timeout=60.0)
 except Exception as e:
     print(f"⚠️ Error initializing Groq LLM: {e}")
 
@@ -120,7 +120,7 @@ async def chat_endpoint(request: ChatRequest):
                 pass
         
         # Ensure recursion_limit is inside config dictionary for LangGraph
-        config["recursion_limit"] = 50
+        config["recursion_limit"] = 5
         
         # Agent Execution with recursion guardrail (No arbitrary asyncio timeout, let recursion_limit handle safety)
         response = await agent_executor.ainvoke(payload, config=config)
@@ -143,9 +143,17 @@ async def chat_endpoint(request: ChatRequest):
         return {"reply": final_reply}
     except Exception as e:
         import traceback
+        error_msg = str(e)
         print("CHAT ROUTER ERROR:", traceback.format_exc())
-        return {"reply": f"PYTHON ERROR: {type(e).__name__} - {str(e)}"}
-
+        
+        if "Rate limit reached" in error_msg or "rate_limit_exceeded" in error_msg:
+            return {"reply": "⚠️ Groq rate limit reached for this model. Please wait a moment and try again."}
+        elif "tool call validation failed" in error_msg:
+            return {"reply": "I got a bit confused while trying to use my tools. Could you please rephrase your request?"}
+        elif "recursion" in error_msg.lower():
+            return {"reply": "I tried to process your request but needed too many steps. Could you be more specific?"}
+        
+        return {"reply": f"PYTHON ERROR: {type(e).__name__} - {error_msg}"}
 @app.post("/api/v1/chat/approve")
 async def approve_hitl(request: ApproveRequest):
     """
@@ -298,7 +306,7 @@ async def chat_stream_endpoint(request: ChatRequest):
             total_input_tokens = 0
             total_output_tokens = 0
 
-            config["recursion_limit"] = 50
+            config["recursion_limit"] = 5
             # 2. Consume LangGraph v2 Event Stream
             async for event in agent_executor.astream_events(
                 payload_input,
@@ -504,7 +512,7 @@ async def upload_file(file: UploadFile = File(...)):
             if not groq_api_key:
                 raise HTTPException(status_code=500, detail="GROQ_API_KEY environment variable is missing.")
 
-            vision_llm = ChatGroq(model="llama-3.1-8b-instant", groq_api_key=os.getenv("GROQ_API_KEY"), max_retries=2, temperature=0.2, timeout=60.0)
+            vision_llm = ChatGroq(model="llama-3.1-8b-instant", groq_api_key=os.getenv("GROQ_API_KEY"), max_retries=0, temperature=0.2, timeout=60.0)
             msg = vision_llm.invoke(
                 [
                     {

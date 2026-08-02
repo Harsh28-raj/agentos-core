@@ -42,21 +42,20 @@ class RouteResponse(BaseModel):
     next: Literal["FINISH", "research_agent", "coder_agent", "vision_agent", "gmail_agent", "calendar_agent"]
 
 # Supervisor LLM setup
-llm = ChatGroq(model="llama-3.1-8b-instant", groq_api_key=os.getenv("GROQ_API_KEY"), max_retries=2, temperature=0.2, timeout=60.0)
+llm = ChatGroq(model="llama-3.1-8b-instant", groq_api_key=os.getenv("GROQ_API_KEY"), max_retries=0, temperature=0.0, timeout=60.0)
 
 system_prompt = (
     "You are a supervisor tasked with managing a conversation between the following workers: {members}. "
-    "Given the following user request, respond with the worker to act next. "
-    "Each worker will perform a task and respond with their results and status. "
-    "When finished, respond with FINISH. "
+    "Given the conversation history, respond with the worker to act next. "
+    "Each worker will perform a task and respond with their results. "
+    "CRITICAL RULE: If a worker has just responded, and their response answers the user, provides information, or asks the user a question, you MUST respond with FINISH so the user can see it! "
+    "Do NOT route back to the same worker if they just spoke. ALWAYS route to FINISH when a worker replies to the user. "
     "If the user wants to search the web or remember something, route to research_agent. "
     "If the user wants to write or run code, route to coder_agent. "
     "If the user wants to analyze an image, route to vision_agent. "
     "If the user wants to read or send emails, route to gmail_agent. "
-    "If the user is approving an email, route to gmail_agent. "
     "If the user wants to check their schedule or create a calendar event, route to calendar_agent. "
-    "If the user is approving a calendar event, route to calendar_agent.\n"
-    "You must output your response in valid JSON format ONLY. Your JSON MUST contain exactly one key named 'next', and its value must be the worker to act next or 'FINISH'. Example: {{\"next\": \"research_agent\"}}"
+    'You must output your response in valid JSON format ONLY. Your JSON MUST contain exactly one key named "next", and its value must be the worker to act next or "FINISH". Example: {{"next": "FINISH"}}'
 )
 
 prompt = ChatPromptTemplate.from_messages([
@@ -73,25 +72,33 @@ def supervisor_node(state: AgentState) -> dict:
     return {"next": res.next}
 
 # Helper to invoke a sub-graph node
-def _invoke_agent(agent, state: AgentState) -> dict:
+def _invoke_agent(agent, state: AgentState, config: dict = None) -> dict:
     print(f"=== INVOKING AGENT: {agent.name} ===")
-    res = agent.invoke(state)
+    # Pass user_id in config so tools like calendar/gmail can authenticate
+    invoke_config = config or {}
+    res = agent.invoke(state, config=invoke_config)
     last_msg = res["messages"][-1]
     
     msg_content = last_msg.content if getattr(last_msg, "content", None) else str(last_msg)
     print(f"=== AGENT {agent.name} RETURNED: {msg_content[:100]}... ===")
     
-    from langchain_core.messages import HumanMessage
-    return {"messages": [HumanMessage(content=msg_content, name=agent.name)]}
+    from langchain_core.messages import AIMessage
+    return {"messages": [AIMessage(content=msg_content, name=agent.name)]}
     
-def research_node(state: AgentState):
-    return _invoke_agent(research_agent, state)
+def research_node(state: AgentState, config: dict = None):
+    return _invoke_agent(research_agent, state, config)
 
-def coder_node(state: AgentState):
-    return _invoke_agent(coder_agent, state)
+def coder_node(state: AgentState, config: dict = None):
+    return _invoke_agent(coder_agent, state, config)
 
-def vision_node(state: AgentState):
-    return _invoke_agent(vision_agent, state)
+def vision_node(state: AgentState, config: dict = None):
+    return _invoke_agent(vision_agent, state, config)
+
+def gmail_node(state: AgentState, config: dict = None):
+    return _invoke_agent(gmail_agent, state, config)
+
+def calendar_node(state: AgentState, config: dict = None):
+    return _invoke_agent(calendar_agent, state, config)
 
 # Build the Graph
 builder = StateGraph(AgentState)
@@ -99,11 +106,11 @@ builder.add_node("supervisor", supervisor_node)
 builder.add_node("research_agent", research_node)
 builder.add_node("coder_agent", coder_node)
 builder.add_node("vision_agent", vision_node)
-builder.add_node("gmail_agent", gmail_agent)
-builder.add_node("calendar_agent", calendar_agent)
+builder.add_node("gmail_agent", gmail_node)
+builder.add_node("calendar_agent", calendar_node)
 
 for member in members:
-    builder.add_edge(member, "supervisor")
+    builder.add_edge(member, END)
 
 builder.add_conditional_edges(
     "supervisor",
