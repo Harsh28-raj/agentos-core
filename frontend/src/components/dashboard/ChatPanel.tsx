@@ -1,7 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
 import type { FormEvent } from 'react'
 import { Card } from '../common/Card'
-import { Button } from '../common/Button'
 import { Send } from 'lucide-react'
 import { API_BASE_URL } from '../../env'
 
@@ -24,7 +23,7 @@ export function ChatPanel() {
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault()
-    if (!input.trim()) return
+    if (isTyping || !input.trim()) return
 
     const userMessage: Message = { id: Date.now().toString(), role: 'user', content: input }
     setMessages(prev => [...prev, userMessage])
@@ -60,7 +59,7 @@ export function ChatPanel() {
   }
 
   return (
-    <Card title="Terminal" className="h-full flex flex-col">
+    <Card title={<span className="font-mono text-white text-sm">TERMINAL</span>} className="h-full flex flex-col bg-[#0d0d0d] border-neutral-800 text-white transition-colors duration-200">
       <div className="flex-1 overflow-y-auto space-y-4 mb-4">
         {messages.length === 0 && (
           <div className="text-slate text-sm font-mono text-center mt-10">
@@ -69,32 +68,36 @@ export function ChatPanel() {
         )}
         {messages.map((m) => (
           <div key={m.id} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-            <div className={`max-w-[80%] rounded-base p-3 text-sm ${m.role === 'user' ? 'bg-surface border border-hairline' : 'bg-transparent border-l-2 border-signal font-mono'}`}>
+            <div className={`max-w-[80%] rounded-lg p-3 text-sm transition-colors duration-200 ${m.role === 'user' ? 'bg-neutral-800/50 border border-neutral-700/50 text-neutral-200' : 'bg-transparent border-l-2 border-emerald-500 font-mono text-neutral-300'}`}>
               {m.content}
             </div>
           </div>
         ))}
         {isTyping && (
           <div className="flex justify-start">
-            <div className="bg-transparent border-l-2 border-signal p-3 text-signal animate-pulse font-mono text-xs">
+            <div className="bg-transparent border-l-2 border-emerald-500 p-3 text-emerald-500 animate-pulse font-mono text-xs">
               Agent processing...
             </div>
           </div>
         )}
         <div ref={bottomRef} />
       </div>
-      <form onSubmit={handleSubmit} className="flex gap-2 shrink-0">
+      <form onSubmit={handleSubmit} className="flex gap-2 shrink-0 border border-neutral-800 bg-neutral-900/50 rounded-full p-2 items-center w-full mt-auto transition-all focus-within:border-emerald-500 focus-within:ring-1 focus-within:ring-emerald-500/40">
         <input
           type="text"
           value={input}
           onChange={(e) => setInput(e.target.value)}
           placeholder="Execute task..."
-          className="flex-1 px-4 py-2 bg-surface border border-hairline rounded-base text-ink focus:outline-none focus:border-signal font-mono text-sm"
+          className="flex-1 px-4 py-2 bg-transparent text-white outline-none focus:outline-none focus:ring-0 font-mono text-sm placeholder:text-neutral-500"
           disabled={isTyping}
         />
-        <Button type="submit" disabled={isTyping || !input.trim()}>
+        <button 
+          type="submit" 
+          disabled={isTyping || !input.trim()}
+          className="bg-emerald-500/20 hover:bg-emerald-500 text-emerald-400 hover:text-black p-2 rounded-full transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+        >
           <Send size={16} />
-        </Button>
+        </button>
       </form>
     </Card>
   )

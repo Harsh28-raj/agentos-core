@@ -2,7 +2,6 @@ import { useState } from 'react'
 import type { FormEvent } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { authService } from '../services/authService'
-import { Button } from '../components/common/Button'
 
 export default function RegisterPage() {
   const [email, setEmail] = useState('')
@@ -35,34 +34,34 @@ export default function RegisterPage() {
       )}
       
       <div>
-        <label className="block text-sm font-medium text-slate mb-1">Email</label>
+        <label className="block text-xs font-medium text-neutral-400 mb-1.5 font-mono">EMAIL</label>
         <input
           type="email"
           required
           value={email}
           onChange={(e) => setEmail(e.target.value)}
-          className="w-full px-3 py-2 bg-paper border border-hairline rounded-base text-ink focus:outline-none focus:ring-2 focus:ring-signal"
+          className="w-full px-3 py-2 bg-neutral-900 border border-neutral-700 rounded text-white focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/50 font-mono text-sm transition-all"
           placeholder="system@agentos.local"
         />
       </div>
       
       <div>
-        <label className="block text-sm font-medium text-slate mb-1">Password</label>
+        <label className="block text-xs font-medium text-neutral-400 mb-1.5 font-mono">PASSWORD</label>
         <input
           type="password"
           required
           value={password}
           onChange={(e) => setPassword(e.target.value)}
-          className="w-full px-3 py-2 bg-paper border border-hairline rounded-base text-ink focus:outline-none focus:ring-2 focus:ring-signal"
+          className="w-full px-3 py-2 bg-neutral-900 border border-neutral-700 rounded text-white focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/50 font-mono text-sm transition-all"
         />
       </div>
       
-      <Button type="submit" fullWidth disabled={isSubmitting}>
+      <button type="submit" disabled={isSubmitting} className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-mono font-bold rounded shadow-[0_0_15px_rgba(16,185,129,0.4)] transition-all disabled:opacity-50">
         {isSubmitting ? 'Initializing...' : 'Initialize'}
-      </Button>
+      </button>
 
-      <div className="text-center mt-4 text-sm text-slate">
-        Returning operator? <Link to="/login" className="text-signal hover:underline">Authenticate</Link>
+      <div className="text-center mt-6 text-sm text-neutral-500 font-mono">
+        Returning operator? <Link to="/login" className="text-emerald-400 hover:text-emerald-300 hover:underline">Authenticate</Link>
       </div>
     </form>
   )

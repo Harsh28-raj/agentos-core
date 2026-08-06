@@ -13,11 +13,11 @@ export function AuthLayout() {
   }
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center bg-paper text-ink p-4 transition-colors duration-200">
-      <div className="w-full max-w-md bg-surface p-8 rounded-base border border-hairline shadow-sm">
+    <div className="min-h-screen flex flex-col items-center justify-center bg-[#0d0d0d] text-white p-4 font-mono transition-colors duration-200">
+      <div className="w-full max-w-md bg-neutral-900/50 p-8 rounded-lg border border-neutral-800 shadow-2xl">
         <div className="mb-8 text-center">
-          <h1 className="font-display text-2xl font-bold tracking-tight">AgentOS</h1>
-          <p className="font-mono text-xs text-slate mt-2 uppercase tracking-wider">System Authentication</p>
+          <h1 className="font-mono text-3xl font-bold tracking-tight text-white mb-2">AgentOS</h1>
+          <p className="font-mono text-xs text-neutral-400 uppercase tracking-[0.2em]">SYSTEM AUTHENTICATION</p>
         </div>
         <Outlet />
       </div>

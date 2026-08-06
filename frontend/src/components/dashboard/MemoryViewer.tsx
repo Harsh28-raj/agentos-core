@@ -9,14 +9,14 @@ export function MemoryViewer() {
   ]
 
   return (
-    <Card title="Episodic Memory" className="h-full">
+    <Card title={<span className="font-mono text-white text-sm">EPISODIC MEMORY</span>} className="h-full bg-[#0d0d0d] border-neutral-800 text-white transition-colors duration-200">
       <div className="space-y-4">
         {memories.map((memory) => (
           <div key={memory.id} className="text-sm">
-            <div className="font-mono text-[10px] text-slate mb-1">
+            <div className="font-mono text-[10px] text-emerald-500 mb-1">
               {new Date(memory.timestamp).toLocaleString()}
             </div>
-            <div className="p-3 bg-surface border border-hairline rounded-base font-body leading-relaxed">
+            <div className="p-3 bg-neutral-900/40 border border-neutral-800/80 rounded-lg font-body leading-relaxed text-neutral-300">
               {memory.content}
             </div>
           </div>
