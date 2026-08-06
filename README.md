@@ -9,14 +9,14 @@
 <br/>
 
 [![Backend Live](https://img.shields.io/badge/Render-Live-brightgreen?style=for-the-badge&logo=render)](https://agentos-core-ssl7.onrender.com)
-[![Frontend Live](https://img.shields.io/badge/Vercel-Live-000000?style=for-the-badge&logo=vercel)](https://agentos-core-ivory.vercel.app)
+[![Frontend Live](https://img.shields.io/badge/Vercel-Live-000000?style=for-the-badge&logo=vercel)](https://agentos-core-git-backend-ml-harsh28-rajs-projects.vercel.app?_vercel_share=xLagqJXb5Q6K60BTpE0kJqSJd69uZRIV)
 [![Python](https://img.shields.io/badge/Python-3.11+-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://www.python.org/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-Async-009688?style=for-the-badge&logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
 [![LangGraph](https://img.shields.io/badge/LangGraph-Multi_Agent-1C3C3C?style=for-the-badge&logo=langchain&logoColor=white)](https://www.langchain.com/langgraph)
 [![Groq](https://img.shields.io/badge/Groq-Llama_3.3_70B-F55036?style=for-the-badge)](https://groq.com/)
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-Neon-4169E1?style=for-the-badge&logo=postgresql&logoColor=white)](https://neon.tech/)
 
-[**Live Demo**](https://agentos-core-ivory.vercel.app) ·
+[**Live Demo**](https://agentos-core-git-backend-ml-harsh28-rajs-projects.vercel.app?_vercel_share=xLagqJXb5Q6K60BTpE0kJqSJd69uZRIV) ·
 [**API Docs (Swagger)**](https://agentos-core-ssl7.onrender.com/docs) ·
 [**Report Bug**](https://github.com/Harsh28-raj/agentos-core/issues) ·
 [**Request Feature**](https://github.com/Harsh28-raj/agentos-core/issues)
@@ -50,6 +50,8 @@
 
 Unlike a typical chatbot wrapper, AgentOS Core **remembers across sessions, executes real-world actions, pauses for human approval before anything risky, and logs a full audit trail of every decision it makes.**
 
+The frontend is a custom-built, terminal-inspired dashboard — real-time tool status, live approval modals, and full light/dark theming — built to make the agent's reasoning process visible rather than hidden behind a spinner.
+
 > [!TIP]
 > Every "risky" action — sending an email, creating a calendar event — goes through an explicit human approval gate before it touches a real API. Nothing happens silently.
 
@@ -78,7 +80,7 @@ This **Reason → Route → Pause → Resume** loop is what separates an agentic
 
 #### Multi-Agent Orchestration
 - Supervisor Router with dynamic sub-agent handoff
-- Specialized agents: Research, Coder, Vision, Calendar, Gmail
+- 5 specialized tools live: Web Search, Weather, Code Interpreter, Calendar, Gmail — plus Vision and Document RAG
 - Loop-prevention guardrail (max iteration cap)
 - Token & cost tracking per LLM call
 
@@ -112,6 +114,12 @@ This **Reason → Route → Pause → Resume** loop is what separates an agentic
 - 📄 **Document RAG** — PDF upload, parsed and embedded into ChromaDB
 - 📧 **Gmail Agent** — search, read, draft, and send email (draft-first, approval-gated)
 - 📅 **Calendar Agent** — create events from natural language, HITL-approved
+
+#### Frontend Experience
+- Custom terminal-inspired UI (React + Vite + TailwindCSS)
+- Full light/dark theme toggle with persisted preference
+- Live tool connection status panel and episodic memory viewer
+- Responsive, fluid layout across screen sizes
 
 ---
 
@@ -219,22 +227,23 @@ sequenceDiagram
 ## Project Structure
 
 agentos-core/
-├── app/
-│ ├── ai/
-│ │ ├── agents/
-│ │ │ ├── supervisor.py # Central routing controller
-│ │ │ ├── research_agent.py
-│ │ │ ├── coder_agent.py
-│ │ │ └── vision_agent.py
-│ │ ├── tools/
-│ │ │ ├── gmail.py # search / read / draft / send
-│ │ │ ├── calendar_tools.py
-│ │ │ └── code_interpreter.py
-│ │ └── agent.py # Graph definition & tool binding
-│ ├── db/
-│ │ ├── chroma_db/
-│ │ └── vector_store.py
-│ └── main.py # Routes, SSE generators, approval endpoint
+├── api-1/
+│ ├── app/
+│ │ ├── ai/
+│ │ │ ├── agents/
+│ │ │ │ ├── supervisor.py # Central routing controller
+│ │ │ │ ├── research_agent.py
+│ │ │ │ ├── coder_agent.py
+│ │ │ │ └── vision_agent.py
+│ │ │ ├── tools/
+│ │ │ │ ├── gmail.py # search / read / draft / send
+│ │ │ │ ├── calendar_tools.py
+│ │ │ │ └── code_interpreter.py
+│ │ │ └── agent.py # Graph definition & tool binding
+│ │ ├── db/
+│ │ │ ├── chroma_db/
+│ │ │ └── vector_store.py
+│ │ └── main.py # Routes, SSE generators, approval endpoint
 ├── frontend/ # React + Vite SPA
 ├── requirements.txt
 └── README.md
@@ -324,6 +333,7 @@ Full interactive docs: **[agentos-core-ssl7.onrender.com/docs](https://agentos-c
 - **Single-tenant Google OAuth.** Gmail and Calendar currently run on one authenticated account rather than per-user tokens — multi-tenant support is on the roadmap.
 - **ChromaDB is local, not yet cloud-persisted.** Long-term vector memory can be lost on a full redeploy since it isn't yet backed by a managed vector store.
 - **Calendar tool covers event creation only.** A "check availability / find free slots" tool is not yet implemented.
+- **Cross-agent tool chaining is limited.** Complex single-prompt chains across Calendar + Gmail in one flow are still being hardened.
 - **Render free-tier cold starts.** First request after inactivity can take 30–40 seconds.
 
 ---
