@@ -65,7 +65,7 @@ app.include_router(auth_router)
 llm = None
 try:
     groq_api_key = os.getenv("GROQ_API_KEY")
-    llm = ChatGroq(model="llama-3.3-70b-versatile", groq_api_key=os.getenv("GROQ_API_KEY"), max_retries=5, temperature=0.0, timeout=60.0)
+    llm = ChatGroq(model="llama-3.1-8b-instant", groq_api_key=os.getenv("GROQ_API_KEY"), max_retries=5, temperature=0.0, timeout=60.0)
 except Exception as e:
     print(f"⚠️ Error initializing Groq LLM: {e}")
 
@@ -629,7 +629,7 @@ async def upload_file(file: UploadFile = File(...)):
             if not groq_api_key:
                 raise HTTPException(status_code=500, detail="GROQ_API_KEY environment variable is missing.")
 
-            vision_llm = ChatGroq(model="llama-3.3-70b-versatile", groq_api_key=os.getenv("GROQ_API_KEY"), max_retries=5, temperature=0.0, timeout=60.0)
+            vision_llm = ChatGroq(model="llama-3.1-8b-instant", groq_api_key=os.getenv("GROQ_API_KEY"), max_retries=5, temperature=0.0, timeout=60.0)
             msg = vision_llm.invoke(
                 [
                     {

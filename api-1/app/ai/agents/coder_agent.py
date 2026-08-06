@@ -6,7 +6,7 @@ from app.ai.llm_wrapper import FallbackLLMWrapper
 
 from app.ai.tools.code_interpreter import python_code_interpreter
 
-llm = FallbackLLMWrapper(ChatGroq(model="llama-3.3-70b-versatile", groq_api_key=os.getenv("GROQ_API_KEY"), max_retries=5, temperature=0.0, timeout=60.0))
+llm = FallbackLLMWrapper(ChatGroq(model="llama-3.1-8b-instant", groq_api_key=os.getenv("GROQ_API_KEY"), max_retries=5, temperature=0.0, timeout=60.0))
 
 system_prompt = SystemMessage(content="""You are the Coder Agent.
 Your role is to write, interpret, and execute python code.

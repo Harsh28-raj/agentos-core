@@ -6,7 +6,7 @@ from app.ai.llm_wrapper import FallbackLLMWrapper
 
 from app.ai.tools import get_current_weather, calculator_tool, web_search_tool, remember_fact, recall_fact
 
-llm = FallbackLLMWrapper(ChatGroq(model="llama-3.3-70b-versatile", groq_api_key=os.getenv("GROQ_API_KEY"), max_retries=5, temperature=0.0, timeout=60.0))
+llm = FallbackLLMWrapper(ChatGroq(model="llama-3.1-8b-instant", groq_api_key=os.getenv("GROQ_API_KEY"), max_retries=5, temperature=0.0, timeout=60.0))
 
 system_prompt = SystemMessage(content="""You are the Research Agent.
 Your role is to gather information, search the live web, and store/recall facts from long-term memory.

@@ -42,7 +42,7 @@ class RouteResponse(BaseModel):
     next: Literal["FINISH", "research_agent", "coder_agent", "vision_agent", "gmail_agent", "calendar_agent"]
 
 # Supervisor LLM setup
-llm = ChatGroq(model="llama-3.3-70b-versatile", groq_api_key=os.getenv("GROQ_API_KEY"), max_retries=5, temperature=0.0, timeout=60.0)
+llm = ChatGroq(model="llama-3.1-8b-instant", groq_api_key=os.getenv("GROQ_API_KEY"), max_retries=5, temperature=0.0, timeout=60.0)
 
 system_prompt = (
     "You are a supervisor tasked with managing a conversation between the following workers: {members}. "
