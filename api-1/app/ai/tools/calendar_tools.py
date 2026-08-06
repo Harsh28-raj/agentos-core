@@ -3,6 +3,7 @@ from datetime import datetime, timedelta
 from typing import List, Dict, Optional
 from langchain_core.tools import tool
 from langchain_core.runnables import RunnableConfig
+from langgraph.types import interrupt
 from google.oauth2.credentials import Credentials
 from google.auth.transport.requests import Request
 from googleapiclient.discovery import build
@@ -103,6 +104,35 @@ def create_calendar_event(summary: str, start_time: str, end_time: str, attendee
         description: Description of the event.
     """
     user_id = config.get("configurable", {}).get("user_id", "default_user") if config else "default_user"
+    
+    approval = interrupt({
+        "message": "Awaiting approval for calendar event creation", 
+        "tool": "create_calendar_event",
+        "action": "create_event",
+        "summary": summary,
+        "start_time": start_time,
+        "end_time": end_time,
+        "attendees": attendees,
+        "description": description
+    })
+    
+    print(f"[DEBUG] create_calendar_event received resume val: {approval!r}")
+    
+    if str(approval).upper() not in ["CONFIRM", "YES", "APPROVED", "TRUE"]:
+        if str(approval).startswith("EDIT:"):
+            import ast
+            try:
+                updated = ast.literal_eval(str(approval)[5:])
+                summary = updated.get("summary", summary)
+                start_time = updated.get("start_time", start_time)
+                end_time = updated.get("end_time", end_time)
+                attendees = updated.get("attendees", attendees)
+                description = updated.get("description", description)
+            except:
+                return "Failed to parse edited arguments."
+        else:
+            return "Calendar event creation was cancelled by the user."
+
     try:
         service = get_calendar_service(user_id)
         

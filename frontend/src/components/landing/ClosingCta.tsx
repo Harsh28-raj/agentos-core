@@ -9,9 +9,9 @@ export function ClosingCta() {
         Stop managing applications. Start operating a system that works for you.
       </p>
       <Link to="/register">
-        <Button className="px-8 py-3 text-lg font-bold uppercase tracking-wider font-mono">
-          Boot System
-        </Button>
+        <button className="px-8 py-3 bg-emerald-500 hover:bg-emerald-400 text-black font-mono font-bold rounded-lg shadow-[0_0_25px_rgba(16,185,129,0.4)] transition-all duration-300 hover:scale-105">
+          BOOT SYSTEM &rarr;
+        </button>
       </Link>
     </section>
   )

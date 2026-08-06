@@ -65,7 +65,7 @@ app.include_router(auth_router)
 llm = None
 try:
     groq_api_key = os.getenv("GROQ_API_KEY")
-    llm = ChatGroq(model="llama-3.1-8b-instant", groq_api_key=os.getenv("GROQ_API_KEY"), max_retries=0, temperature=0.2, timeout=60.0)
+    llm = ChatGroq(model="llama-3.3-70b-versatile", groq_api_key=os.getenv("GROQ_API_KEY"), max_retries=5, temperature=0.0, timeout=60.0)
 except Exception as e:
     print(f"⚠️ Error initializing Groq LLM: {e}")
 
@@ -92,11 +92,74 @@ async def chat_endpoint(request: ChatRequest):
         session_id = f"agentos_new:{request.user_id}_{request.thread_id}"
         config = {"configurable": {"thread_id": session_id, "user_id": request.user_id}}
         
-        # Check if resuming
-        current_state = agent_executor.get_state(config)
-        is_resuming = len(current_state.next) > 0
-        payload = None if is_resuming else {"messages": messages}
+        # Check if a tool-level interrupt is pending (inside a tool via interrupt())
+        current_state = agent_executor.get_state(config, subgraphs=True)
+        current_state_parent = agent_executor.get_state(config)
         
+        # A tool-level interrupt means tasks exist AND those tasks have .interrupts populated
+        is_tool_interrupted = (
+            bool(current_state.tasks) and 
+            any(bool(t.interrupts) for t in current_state.tasks)
+        )
+        # A node-level pause means .next is set but NO tool-level interrupt
+        is_node_paused = len(current_state_parent.next) > 0 and not is_tool_interrupted
+        is_resuming = is_node_paused  # Only treat as resuming for node-level pauses
+        
+        # HITL Natural Language Resolution (only for node-level pauses)
+        if is_resuming:
+            msg_lower = request.message.strip().lower()
+            affirmative_keywords = ["confirm", "approved", "yes", "proceed", "do it"]
+            negative_keywords = ["reject", "cancel", "no", "stop", "abort"]
+            
+            if any(k in msg_lower for k in negative_keywords):
+                agent_executor.update_state(config, {"messages": [HumanMessage(content="The user REJECTED the action. Do not proceed.")]})
+            elif any(k in msg_lower for k in affirmative_keywords):
+                pass # Proceed normally
+            else:
+                agent_executor.update_state(config, {"messages": [HumanMessage(content=request.message)]})
+        
+        # Handle tool-level interrupts (from interrupt() inside tools like create_calendar_event)
+        if is_tool_interrupted:
+            from langgraph.types import Command
+            interrupt_data = current_state.tasks[0].interrupts[0].value if current_state.tasks[0].interrupts else {}
+            msg_lower = request.message.strip().lower()
+            
+            affirmative_keywords = ["confirm", "approved", "yes", "proceed", "do it", "go ahead"]
+            negative_keywords = ["reject", "cancel", "no", "stop", "abort", "deny"]
+            
+            if any(k in msg_lower for k in affirmative_keywords):
+                # Resume the interrupted tool with CONFIRM
+                print(f"[HITL] Resuming tool interrupt with CONFIRM")
+                config["recursion_limit"] = 15
+                response = await agent_executor.ainvoke(Command(resume="CONFIRM"), config=config)
+                
+                # Extract final response after tool execution completes
+                if isinstance(response, dict) and "messages" in response and response["messages"]:
+                    final_reply = response["messages"][-1].content
+                else:
+                    final_reply = "Action completed successfully."
+                return {"reply": final_reply}
+                
+            elif any(k in msg_lower for k in negative_keywords):
+                # Resume the interrupted tool with REJECT
+                print(f"[HITL] Resuming tool interrupt with REJECT")
+                config["recursion_limit"] = 15
+                response = await agent_executor.ainvoke(Command(resume="REJECT"), config=config)
+                
+                if isinstance(response, dict) and "messages" in response and response["messages"]:
+                    final_reply = response["messages"][-1].content
+                else:
+                    final_reply = "Action was cancelled."
+                return {"reply": final_reply}
+            else:
+                # First time seeing this interrupt — show the approval prompt to the user
+                return {
+                    "reply": f"⏸️ Awaiting your approval before executing: **{interrupt_data.get('action', 'action')}**",
+                    "hitl_interrupt": True,
+                    "interrupt_data": interrupt_data
+                }
+                
+        payload = None if is_resuming else {"messages": messages}
         
         # Safe History Slicing (DO NOT assign directly to memory.messages)
         if hasattr(memory, "chat_memory"):
@@ -120,15 +183,28 @@ async def chat_endpoint(request: ChatRequest):
                 pass
         
         # Ensure recursion_limit is inside config dictionary for LangGraph
-        config["recursion_limit"] = 5
+        config["recursion_limit"] = 15
         
         # Agent Execution with recursion guardrail (No arbitrary asyncio timeout, let recursion_limit handle safety)
         response = await agent_executor.ainvoke(payload, config=config)
+
         
-        # Check if paused
+        # Check if paused after execution
+        final_state_with_sub = agent_executor.get_state(config, subgraphs=True)
         final_state = agent_executor.get_state(config)
-        if final_state.next:
-            return {"reply": f"⏸️ Execution paused. Awaiting human approval to proceed with {final_state.next[0]}."}
+        
+        # Only show pause if it's a tool-level interrupt (inside a tool)
+        final_is_tool_interrupted = (
+            bool(final_state_with_sub.tasks) and
+            any(bool(t.interrupts) for t in final_state_with_sub.tasks)
+        )
+        if final_is_tool_interrupted:
+            interrupt_data = final_state_with_sub.tasks[0].interrupts[0].value if final_state_with_sub.tasks[0].interrupts else {}
+            return {
+                "reply": f"⏸️ Awaiting your approval before executing: **{interrupt_data.get('action', 'action')}**",
+                "hitl_interrupt": True,
+                "interrupt_data": interrupt_data
+            }
             
         # Safe Output Extraction
         if isinstance(response, dict):
@@ -163,20 +239,20 @@ async def approve_hitl(request: ApproveRequest):
         session_id = f"agentos_new:{request.user_id}_{request.thread_id}"
         config = {"configurable": {"thread_id": session_id, "user_id": request.user_id}}
         
-        # We need to get the subgraph state where the actual tool call is paused
         state = agent_executor.get_state(config, subgraphs=True)
-        
-        # Check if parent or any subgraph is paused
         parent_state = agent_executor.get_state(config)
+        
+        is_tool_interrupt = False
+        if state.tasks and state.tasks[0].interrupts:
+            is_tool_interrupt = True
+
         if not parent_state.next and not state.tasks:
             return {"status": "error", "message": "No pending execution paused."}
             
-        # Find the paused subgraph task if it's paused in a subgraph
         active_subgraph_task = None
         if state.tasks:
             active_subgraph_task = state.tasks[0]
             
-        # Extract pending tool call from subgraph state if available
         original_args = None
         pending_msg = None
         tool_call_id = None
@@ -191,45 +267,59 @@ async def approve_hitl(request: ApproveRequest):
                     original_args = pending_msg.tool_calls[0].get("args")
                     tool_call_id = pending_msg.tool_calls[0].get("id")
 
+        if is_tool_interrupt:
+            interrupt_payload = active_subgraph_task.interrupts[0].value
+            if isinstance(interrupt_payload, dict):
+                original_args = interrupt_payload
+
+        from langgraph.types import Command
+        
         if request.action == "EDIT":
             if not request.updated_args:
                 return {"status": "error", "message": "updated_args is required for EDIT action"}
-            if not pending_msg or not subgraph_config:
-                return {"status": "error", "message": "Could not locate a pending tool call to edit."}
+            
+            if is_tool_interrupt:
+                await log_episodic_event(
+                    thread_id=request.user_id,
+                    run_id=tool_call_id or "edit",
+                    tool_name="HITL_EDIT",
+                    action_taken="EDIT",
+                    original_args=original_args,
+                    modified_args=request.updated_args,
+                    human_feedback=request.feedback_message,
+                    status="completed"
+                )
+                await agent_executor.ainvoke(Command(resume=f"EDIT:{request.updated_args}"), config=config, recursion_limit=5)
+                return {"status": "resumed", "message": "Action edited and resumed."}
+            else:
+                if not pending_msg or not subgraph_config:
+                    return {"status": "error", "message": "Could not locate a pending tool call to edit."}
+                    
+                new_tool_calls = list(pending_msg.tool_calls)
+                new_tool_calls[0]["args"] = request.updated_args
                 
-            # Clone the message and override the args
-            new_tool_calls = list(pending_msg.tool_calls)
-            new_tool_calls[0]["args"] = request.updated_args
-            
-            # Create a new AIMessage with the updated tool calls
-            from langchain_core.messages import AIMessage
-            modified_msg = AIMessage(
-                content=pending_msg.content,
-                tool_calls=new_tool_calls,
-                id=pending_msg.id  # Must use the same ID to overwrite it in LangGraph state
-            )
-            
-            # Update the subgraph state
-            agent_executor.update_state(subgraph_config, {"messages": [modified_msg]})
-            
-            # Log the event
-            await log_episodic_event(
-                thread_id=request.user_id,
-                run_id=tool_call_id or "edit",
-                tool_name="HITL_EDIT",
-                action_taken="EDIT",
-                original_args=original_args,
-                modified_args=request.updated_args,
-                human_feedback=request.feedback_message,
-                status="completed"
-            )
-
-            # Resume
-            await agent_executor.ainvoke(None, config=config, recursion_limit=5)
-            return {"status": "resumed", "message": "Action edited and resumed."}
+                from langchain_core.messages import AIMessage
+                modified_msg = AIMessage(
+                    content=pending_msg.content,
+                    tool_calls=new_tool_calls,
+                    id=pending_msg.id
+                )
+                agent_executor.update_state(subgraph_config, {"messages": [modified_msg]})
+                
+                await log_episodic_event(
+                    thread_id=request.user_id,
+                    run_id=tool_call_id or "edit",
+                    tool_name="HITL_EDIT",
+                    action_taken="EDIT",
+                    original_args=original_args,
+                    modified_args=request.updated_args,
+                    human_feedback=request.feedback_message,
+                    status="completed"
+                )
+                await agent_executor.ainvoke(None, config=config, recursion_limit=5)
+                return {"status": "resumed", "message": "Action edited and resumed."}
             
         elif request.action == "CONFIRM":
-            # Log the event
             await log_episodic_event(
                 thread_id=request.user_id,
                 run_id=tool_call_id or "confirm",
@@ -238,24 +328,34 @@ async def approve_hitl(request: ApproveRequest):
                 original_args=original_args,
                 status="completed"
             )
-            await agent_executor.ainvoke(None, config=config, recursion_limit=5)
+            if is_tool_interrupt:
+                await agent_executor.ainvoke(Command(resume="CONFIRM"), config=config, recursion_limit=5)
+            else:
+                await agent_executor.ainvoke(None, config=config, recursion_limit=5)
             return {"status": "resumed", "message": "Action approved and resumed."}
             
         else:
-            # Inject a rejection message and resume
-            agent_executor.update_state(config, {"messages": [HumanMessage(content="The user REJECTED the action. Do not proceed.")]})
-            
-            # Log the event
-            await log_episodic_event(
-                thread_id=request.user_id,
-                run_id=tool_call_id or "reject",
-                tool_name="HITL_REJECT",
-                action_taken="REJECT",
-                original_args=original_args,
-                status="completed"
-            )
-            
-            await agent_executor.ainvoke(None, config=config, recursion_limit=5)
+            if is_tool_interrupt:
+                await log_episodic_event(
+                    thread_id=request.user_id,
+                    run_id=tool_call_id or "reject",
+                    tool_name="HITL_REJECT",
+                    action_taken="REJECT",
+                    original_args=original_args,
+                    status="completed"
+                )
+                await agent_executor.ainvoke(Command(resume="REJECT"), config=config, recursion_limit=5)
+            else:
+                agent_executor.update_state(config, {"messages": [HumanMessage(content="The user REJECTED the action. Do not proceed.")]})
+                await log_episodic_event(
+                    thread_id=request.user_id,
+                    run_id=tool_call_id or "reject",
+                    tool_name="HITL_REJECT",
+                    action_taken="REJECT",
+                    original_args=original_args,
+                    status="completed"
+                )
+                await agent_executor.ainvoke(None, config=config, recursion_limit=5)
             return {"status": "rejected", "message": "Action rejected and graph updated."}
     except Exception as e:
         import traceback
@@ -294,6 +394,19 @@ async def chat_stream_endpoint(request: ChatRequest):
                     
             is_resuming = len(current_state.next) > 0
             
+            # HITL Natural Language Resolution for streaming
+            if is_resuming:
+                msg_lower = request.message.strip().lower()
+                affirmative_keywords = ["confirm", "approved", "yes", "proceed", "do it"]
+                negative_keywords = ["reject", "cancel", "no", "stop", "abort"]
+                
+                if any(k in msg_lower for k in negative_keywords):
+                    agent_executor.update_state(config, {"messages": [HumanMessage(content="The user REJECTED the action. Do not proceed.")]})
+                elif any(k in msg_lower for k in affirmative_keywords):
+                    pass # Proceed normally
+                else:
+                    agent_executor.update_state(config, {"messages": [HumanMessage(content=request.message)]})
+            
             payload_input = None if is_resuming else {"messages": messages}
 
             # Emit Initial Thinking State
@@ -306,7 +419,7 @@ async def chat_stream_endpoint(request: ChatRequest):
             total_input_tokens = 0
             total_output_tokens = 0
 
-            config["recursion_limit"] = 5
+            config["recursion_limit"] = 15
             # 2. Consume LangGraph v2 Event Stream
             async for event in agent_executor.astream_events(
                 payload_input,
@@ -407,8 +520,12 @@ async def chat_stream_endpoint(request: ChatRequest):
                 subgraph_task = final_state.tasks[0]
                 paused_agent = subgraph_task.name
                 
-                # Extract pending args
-                if subgraph_task.state and subgraph_task.state.values.get("messages"):
+                if subgraph_task.interrupts:
+                    interrupt_data = subgraph_task.interrupts[0].value
+                    if isinstance(interrupt_data, dict):
+                        pending_tool = interrupt_data.get("action", "unknown_action")
+                        pending_args = interrupt_data
+                elif subgraph_task.state and subgraph_task.state.values.get("messages"):
                     msgs = subgraph_task.state.values["messages"]
                     if msgs and getattr(msgs[-1], "tool_calls", None) and len(msgs[-1].tool_calls) > 0:
                         pending_tool = msgs[-1].tool_calls[0].get("name")
@@ -512,7 +629,7 @@ async def upload_file(file: UploadFile = File(...)):
             if not groq_api_key:
                 raise HTTPException(status_code=500, detail="GROQ_API_KEY environment variable is missing.")
 
-            vision_llm = ChatGroq(model="llama-3.1-8b-instant", groq_api_key=os.getenv("GROQ_API_KEY"), max_retries=0, temperature=0.2, timeout=60.0)
+            vision_llm = ChatGroq(model="llama-3.3-70b-versatile", groq_api_key=os.getenv("GROQ_API_KEY"), max_retries=5, temperature=0.0, timeout=60.0)
             msg = vision_llm.invoke(
                 [
                     {

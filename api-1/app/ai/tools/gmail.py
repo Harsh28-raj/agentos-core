@@ -8,6 +8,7 @@ from langchain_core.runnables import RunnableConfig
 from google.oauth2.credentials import Credentials
 from google.auth.transport.requests import Request
 from googleapiclient.discovery import build
+from langgraph.types import interrupt
 
 from app.db.postgres import SyncSessionLocal
 from app.db.models import UserToken
@@ -162,6 +163,31 @@ def send_email(draft_id: Optional[str] = None, recipient: Optional[str] = None, 
         body: The body content of the email (if not using draft_id).
     """
     user_id = config.get("configurable", {}).get("user_id", "default_user") if config else "default_user"
+    
+    approval = interrupt({
+        "message": "Awaiting approval for sending email",
+        "tool": "send_email",
+        "action": "send_email",
+        "draft_id": draft_id,
+        "recipient": recipient,
+        "subject": subject,
+        "body": body
+    })
+    
+    if str(approval).upper() not in ["CONFIRM", "YES", "APPROVED", "TRUE"]:
+        if str(approval).startswith("EDIT:"):
+            import ast
+            try:
+                updated = ast.literal_eval(str(approval)[5:])
+                draft_id = updated.get("draft_id", draft_id)
+                recipient = updated.get("recipient", recipient)
+                subject = updated.get("subject", subject)
+                body = updated.get("body", body)
+            except:
+                return "Failed to parse edited arguments."
+        else:
+            return "Email sending was cancelled by the user."
+
     try:
         service = get_gmail_service(user_id)
         

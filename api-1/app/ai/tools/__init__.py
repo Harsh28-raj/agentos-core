@@ -17,11 +17,11 @@ tavily_key = os.getenv("TAVILY_API_KEY")
 if not tavily_key:
     print("⚠️ WARNING: TAVILY_API_KEY is missing in environment variables!")
 
-# --- 1. Weather Tool (Dummy/Test Tool) ---
-@tool
-def get_weather(location: str) -> str:
-    """Gets the current weather for a given location."""
-    return f"The weather in {location} is 28°C and sunny."
+# --- 1. Weather Tool (wttr.in) ---
+from app.ai.tools.weather import get_current_weather
+
+# --- New Calculator Tool ---
+from app.ai.tools.calculator import calculator_tool
 
 # --- 2. Live Web Search Tool (Tavily) ---
 web_search_tool = TavilySearchResults(
@@ -54,4 +54,4 @@ def recall_fact(query: str) -> str:
 
 # --- AGENT TOOLS LIST ---
 # Agent in sabhi tools ka use karke decisions lega
-tools = [get_weather, web_search_tool, remember_fact, recall_fact, python_code_interpreter, analyze_image, search_emails, read_email_content, draft_email, send_email]
+tools = [get_current_weather, calculator_tool, web_search_tool, remember_fact, recall_fact, python_code_interpreter, analyze_image, search_emails, read_email_content, draft_email, send_email]
