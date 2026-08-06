@@ -21,14 +21,10 @@ export function PhilosophyTable() {
           </thead>
           <tbody>
             {components.map((comp, i) => (
-              <tr key={i} className="border-b border-hairline hover:bg-neutral-900/50 transition-colors group">
-                <td className="py-5 font-body font-medium text-slate group-hover:text-neutral-300 transition-colors">{comp.traditional}</td>
-                <td className="py-5 font-body font-bold text-ink">
-                  <span className="bg-emerald-950/40 text-emerald-400 border border-emerald-800/50 rounded-md px-2.5 py-1 text-xs font-mono">
-                    {comp.agentOS}
-                  </span>
-                </td>
-                <td className="py-5 font-body text-slate group-hover:text-neutral-300 transition-colors">{comp.role}</td>
+              <tr key={i} className="border-b border-hairline hover:bg-surface transition-colors group">
+                <td className="py-5 font-body font-medium text-slate group-hover:text-ink transition-colors">{comp.traditional}</td>
+                <td className="py-5 font-body font-bold text-ink">{comp.agentOS}</td>
+                <td className="py-5 font-body text-slate">{comp.role}</td>
               </tr>
             ))}
           </tbody>

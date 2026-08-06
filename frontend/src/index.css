@@ -1,5 +1,5 @@
 @import "tailwindcss";
-@custom-variant dark (&:is(.dark *));
+
 @theme {
   --font-display: "Space Grotesk", sans-serif;
   --font-body: "Manrope", sans-serif;
@@ -26,13 +26,13 @@
 }
 
 .dark {
-  --color-paper-rgb: 10 10 10;
-  --color-surface-rgb: 23 23 23;
-  --color-ink-rgb: 245 245 245;
-  --color-slate-rgb: 163 163 163;
-  --color-hairline-rgb: 38 38 38;
-  --color-signal-rgb: 16 185 129;
-  --color-signal-ink-rgb: 6 78 59;
+  --color-paper-rgb: 24 24 27;
+  --color-surface-rgb: 32 32 36;
+  --color-ink-rgb: 240 240 235;
+  --color-slate-rgb: 148 148 140;
+  --color-hairline-rgb: 42 42 46;
+  --color-signal-rgb: 232 135 30;
+  --color-signal-ink-rgb: 28 20 8;
 }
 
 body {
@@ -42,36 +42,8 @@ body {
   transition: background-color 0.2s ease, color 0.2s ease;
 }
 
-.dark body {
-  background-color: #0a0a0a;
-  background-image: radial-gradient(ellipse 80% 80% at 50% -20%, rgba(120, 119, 198, 0.15), rgba(255, 255, 255, 0));
-}
-
 /* Base focus style */
 *:focus-visible {
   outline: 2px solid rgb(var(--color-signal-rgb));
   outline-offset: 2px;
-}
-
-/* Custom sleek dark scrollbar */
-.custom-scrollbar::-webkit-scrollbar,
-::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
-}
-
-.custom-scrollbar::-webkit-scrollbar-track,
-::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-.custom-scrollbar::-webkit-scrollbar-thumb,
-::-webkit-scrollbar-thumb {
-  background: #262626;
-  border-radius: 9999px;
-}
-
-.custom-scrollbar::-webkit-scrollbar-thumb:hover,
-::-webkit-scrollbar-thumb:hover {
-  background: #404040;
 }

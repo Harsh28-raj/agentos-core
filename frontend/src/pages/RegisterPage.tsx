@@ -2,7 +2,7 @@ import { useState } from 'react'
 import type { FormEvent } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { authService } from '../services/authService'
-import { Mail, Lock } from 'lucide-react'
+import { Button } from '../components/common/Button'
 
 export default function RegisterPage() {
   const [email, setEmail] = useState('')
@@ -27,55 +27,42 @@ export default function RegisterPage() {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-6">
+    <form onSubmit={handleSubmit} className="space-y-4">
       {error && (
-        <div className="p-3 text-sm text-rose-400 bg-rose-500/10 border border-rose-500/20 rounded-lg font-mono">
+        <div className="p-3 text-sm text-red-500 bg-red-500/10 border border-red-500/20 rounded-base">
           {error}
         </div>
       )}
       
-      <div className="space-y-1.5">
-        <label className="block font-mono text-xs text-neutral-300">Email</label>
-        <div className="relative">
-          <Mail className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-500" size={16} />
-          <input
-            type="email"
-            required
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            className="w-full pl-10 pr-3 py-2.5 bg-neutral-900/80 border border-neutral-800 text-white font-mono placeholder:text-neutral-600 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/50 rounded-lg transition-all focus:outline-none"
-            placeholder="system@agentos.local"
-          />
-        </div>
+      <div>
+        <label className="block text-sm font-medium text-slate mb-1">Email</label>
+        <input
+          type="email"
+          required
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          className="w-full px-3 py-2 bg-paper border border-hairline rounded-base text-ink focus:outline-none focus:ring-2 focus:ring-signal"
+          placeholder="system@agentos.local"
+        />
       </div>
       
-      <div className="space-y-1.5">
-        <label className="block font-mono text-xs text-neutral-300">Password</label>
-        <div className="relative">
-          <Lock className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-500" size={16} />
-          <input
-            type="password"
-            required
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            className="w-full pl-10 pr-3 py-2.5 bg-neutral-900/80 border border-neutral-800 text-white font-mono placeholder:text-neutral-600 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/50 rounded-lg transition-all focus:outline-none"
-            placeholder="••••••••"
-          />
-        </div>
+      <div>
+        <label className="block text-sm font-medium text-slate mb-1">Password</label>
+        <input
+          type="password"
+          required
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          className="w-full px-3 py-2 bg-paper border border-hairline rounded-base text-ink focus:outline-none focus:ring-2 focus:ring-signal"
+        />
       </div>
       
-      <button 
-        type="submit" 
-        disabled={isSubmitting}
-        className="w-full py-2.5 bg-emerald-500 hover:bg-emerald-400 text-black font-mono font-bold text-xs rounded-lg shadow-[0_0_20px_rgba(16,185,129,0.3)] transition-all duration-300 active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed mt-2"
-      >
-        {isSubmitting ? 'INITIALIZING...' : 'INITIALIZE ACCOUNT →'}
-      </button>
+      <Button type="submit" fullWidth disabled={isSubmitting}>
+        {isSubmitting ? 'Initializing...' : 'Initialize'}
+      </Button>
 
-      <div className="text-center mt-6">
-        <Link to="/login" className="font-mono text-xs text-neutral-400 hover:text-emerald-400 transition-colors cursor-pointer">
-          Returning operator? Authenticate
-        </Link>
+      <div className="text-center mt-4 text-sm text-slate">
+        Returning operator? <Link to="/login" className="text-signal hover:underline">Authenticate</Link>
       </div>
     </form>
   )

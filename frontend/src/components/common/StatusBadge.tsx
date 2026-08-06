@@ -1,19 +1,19 @@
 export function StatusBadge({ status }: { status: string }) {
-    const getStatusColor = (s: string) => {
+  const getStatusColor = (s: string) => {
     switch (s) {
       case 'completed':
-        return 'bg-emerald-950/50 text-emerald-400 border-emerald-800/60'
+        return 'bg-green-500/10 text-green-600 border-green-500/20'
       case 'in_progress':
-        return 'bg-amber-950/50 text-amber-400 border-amber-800/60 animate-pulse'
+        return 'bg-signal/10 text-signal border-signal/20'
       case 'failed':
-        return 'bg-rose-950/50 text-rose-400 border-rose-800/60'
+        return 'bg-red-500/10 text-red-600 border-red-500/20'
       default:
-        return 'bg-neutral-900 text-neutral-400 border-neutral-800'
+        return 'bg-slate/10 text-slate border-slate/20'
     }
   }
 
   return (
-    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-mono uppercase tracking-wider border ${getStatusColor(status)}`}>
+    <span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-mono uppercase tracking-wider border ${getStatusColor(status)}`}>
       {status.replace('_', ' ')}
     </span>
   )

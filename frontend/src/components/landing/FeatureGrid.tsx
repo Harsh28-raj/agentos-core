@@ -12,11 +12,11 @@ export function FeatureGrid() {
     <section className="py-20 px-4 max-w-7xl mx-auto border-t border-hairline">
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
         {features.map((f, i) => (
-          <div key={i} className="p-6 bg-surface border border-hairline rounded-base flex flex-col h-full hover:-translate-y-1 hover:border-neutral-700 hover:bg-neutral-900/60 hover:shadow-[0_0_20px_rgba(16,185,129,0.1)] transition-all duration-300 group">
-            <span className="font-mono text-xs text-emerald-400 mb-4 border border-emerald-800/50 bg-emerald-950/40 self-start px-2.5 py-1 rounded-md">
+          <div key={i} className="p-6 bg-surface border border-hairline rounded-base flex flex-col h-full hover:border-signal transition-colors group">
+            <span className="font-mono text-[10px] text-signal uppercase tracking-wider mb-4 border border-signal/30 bg-signal/5 self-start px-2 py-1 rounded">
               {f.tag}
             </span>
-            <h3 className="font-display font-bold text-lg mb-2 text-ink group-hover:text-emerald-400 transition-colors">{f.label}</h3>
+            <h3 className="font-display font-bold text-lg mb-2 text-ink">{f.label}</h3>
             <p className="font-body text-slate text-sm flex-1">{f.desc}</p>
           </div>
         ))}
