@@ -1,6 +1,5 @@
 import { Card } from '../common/Card'
 import type { Memory } from '../../types'
-import { Clock } from 'lucide-react'
 
 export function MemoryViewer() {
   const memories: Memory[] = [
@@ -10,15 +9,14 @@ export function MemoryViewer() {
   ]
 
   return (
-    <Card title="EPISODIC MEMORY" className="h-full bg-[#0a0a0a] border-neutral-800 text-white transition-colors duration-200">
-      <div className="space-y-3">
+    <Card title="Episodic Memory" className="h-full">
+      <div className="space-y-4">
         {memories.map((memory) => (
-          <div key={memory.id} className="bg-slate-50 dark:bg-neutral-900/40 border border-slate-200 dark:border-neutral-800/80 rounded-lg p-2.5 space-y-1 hover:border-slate-300 dark:hover:border-neutral-700/80 hover:bg-slate-100 hover:dark:bg-neutral-900/60 transition-colors duration-200">
-            <div className="flex items-center gap-1.5 font-mono text-[10px] text-emerald-600 dark:text-emerald-400/80">
-              <Clock size={12} />
+          <div key={memory.id} className="text-sm">
+            <div className="font-mono text-[10px] text-slate mb-1">
               {new Date(memory.timestamp).toLocaleString()}
             </div>
-            <div className="text-xs text-slate-600 dark:text-neutral-400 font-sans leading-relaxed">
+            <div className="p-3 bg-surface border border-hairline rounded-base font-body leading-relaxed">
               {memory.content}
             </div>
           </div>
