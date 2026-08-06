@@ -114,13 +114,13 @@ export function ChatPanel() {
         )}
         <div ref={bottomRef} />
       </div>
-      <form onSubmit={handleSubmit} className="flex gap-2 shrink-0 bg-neutral-900 border border-neutral-800 focus-within:border-emerald-500 focus-within:ring-1 focus-within:ring-emerald-500/40 rounded-full px-4 py-2 transition-all">
+      <form onSubmit={handleSubmit} className="flex gap-2 shrink-0 border border-zinc-800 bg-zinc-900/50 rounded-lg p-2 items-center w-full mt-auto transition-all">
         <input
           type="text"
           value={input}
           onChange={(e) => setInput(e.target.value)}
           placeholder="Execute task..."
-          className="flex-1 bg-transparent text-white focus:outline-none font-mono text-sm placeholder:text-neutral-500 transition-colors duration-200"
+          className="flex-1 outline-none focus:outline-none focus:ring-0 bg-transparent text-white font-mono text-sm placeholder:text-neutral-500 transition-colors duration-200"
           disabled={isTyping}
         />
         <button 
