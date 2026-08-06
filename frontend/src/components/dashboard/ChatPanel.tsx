@@ -24,7 +24,7 @@ export function ChatPanel() {
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault()
-    if (!input.trim()) return
+    if (isTyping || !input.trim()) return
 
     const userMessage: Message = { id: Date.now().toString(), role: 'user', content: input }
     setMessages(prev => [...prev, userMessage])
