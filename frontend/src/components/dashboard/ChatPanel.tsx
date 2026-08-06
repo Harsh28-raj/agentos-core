@@ -60,7 +60,7 @@ export function ChatPanel() {
   }
 
   return (
-    <Card title={<span className="font-mono text-emerald-600 dark:text-emerald-400/80 text-sm tracking-widest">[ TERMINAL_SESSION ]</span>} className="h-full flex flex-col bg-white dark:bg-neutral-900/40 border-slate-200 dark:border-neutral-800/80 text-slate-800 dark:text-neutral-200 transition-colors duration-200">
+    <Card title={<span className="font-mono text-white text-sm">TERMINAL</span>} className="h-full flex flex-col bg-[#0a0a0a] border-neutral-800 text-white transition-colors duration-200">
       <div className="flex-1 overflow-y-auto space-y-4 mb-4">
         {messages.length === 0 && (
           <div className="text-slate text-sm font-mono text-center mt-10">
@@ -114,13 +114,13 @@ export function ChatPanel() {
         )}
         <div ref={bottomRef} />
       </div>
-      <form onSubmit={handleSubmit} className="flex gap-2 shrink-0 bg-slate-50 dark:bg-neutral-900/80 border border-slate-300 dark:border-neutral-800 focus-within:border-emerald-500 focus-within:dark:border-emerald-500/80 focus-within:ring-1 focus-within:ring-emerald-500/40 rounded-lg p-1.5 transition-all">
+      <form onSubmit={handleSubmit} className="flex gap-2 shrink-0 bg-neutral-900 border border-neutral-800 focus-within:border-emerald-500 focus-within:ring-1 focus-within:ring-emerald-500/40 rounded-full px-4 py-2 transition-all">
         <input
           type="text"
           value={input}
           onChange={(e) => setInput(e.target.value)}
           placeholder="Execute task..."
-          className="flex-1 px-3 py-1.5 bg-transparent text-slate-900 dark:text-white focus:outline-none font-mono text-sm placeholder:text-slate-400 dark:placeholder:text-neutral-600 transition-colors duration-200"
+          className="flex-1 bg-transparent text-white focus:outline-none font-mono text-sm placeholder:text-neutral-500 transition-colors duration-200"
           disabled={isTyping}
         />
         <button 

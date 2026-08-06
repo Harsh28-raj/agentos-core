@@ -10,7 +10,7 @@ export function MemoryViewer() {
   ]
 
   return (
-    <Card title="EPISODIC MEMORY" className="h-full bg-white dark:bg-neutral-900/60 border-slate-200 dark:border-neutral-800/80 text-slate-800 dark:text-neutral-200 transition-colors duration-200">
+    <Card title="EPISODIC MEMORY" className="h-full bg-[#0a0a0a] border-neutral-800 text-white transition-colors duration-200">
       <div className="space-y-3">
         {memories.map((memory) => (
           <div key={memory.id} className="bg-slate-50 dark:bg-neutral-900/40 border border-slate-200 dark:border-neutral-800/80 rounded-lg p-2.5 space-y-1 hover:border-slate-300 dark:hover:border-neutral-700/80 hover:bg-slate-100 hover:dark:bg-neutral-900/60 transition-colors duration-200">
