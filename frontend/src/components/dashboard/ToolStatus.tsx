@@ -1,12 +1,13 @@
 import { Card } from '../common/Card'
-import { CheckCircle, XCircle, Loader2 } from 'lucide-react'
+import { XCircle, Loader2 } from 'lucide-react'
 
 export function ToolStatus() {
   const tools = [
-    { name: 'Calculator', status: 'online' },
-    { name: 'Web Search', status: 'online' },
-    { name: 'Code Interpreter', status: 'loading' },
-    { name: 'Weather API', status: 'offline' },
+    { name: 'Web Search', status: 'ONLINE' },
+    { name: 'Weather API', status: 'ONLINE' },
+    { name: 'Calculator', status: 'ONLINE' },
+    { name: 'Calendar Agent', status: 'ONLINE' },
+    { name: 'Gmail Agent', status: 'ONLINE' },
   ]
 
   return (
@@ -17,9 +18,14 @@ export function ToolStatus() {
             <span className="font-mono text-sm">{tool.name}</span>
             <div className="flex items-center space-x-2">
               <span className="text-[10px] font-mono uppercase text-slate tracking-wider">{tool.status}</span>
-              {tool.status === 'online' && <CheckCircle size={14} className="text-green-500" />}
-              {tool.status === 'offline' && <XCircle size={14} className="text-red-500" />}
-              {tool.status === 'loading' && <Loader2 size={14} className="text-signal animate-spin" />}
+              {tool.status === 'ONLINE' && (
+                <div className="relative flex h-3 w-3 items-center justify-center">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500 shadow-[0_0_8px_#22c55e]"></span>
+                </div>
+              )}
+              {tool.status === 'OFFLINE' && <XCircle size={14} className="text-red-500" />}
+              {tool.status === 'LOADING' && <Loader2 size={14} className="text-signal animate-spin" />}
             </div>
           </div>
         ))}
