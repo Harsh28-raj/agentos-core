@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react'
 import type { FormEvent } from 'react'
 import { Card } from '../common/Card'
-import { Button } from '../common/Button'
+
 import { Send } from 'lucide-react'
 import { API_BASE_URL } from '../../env'
 
