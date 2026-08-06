@@ -15,7 +15,7 @@ export function SystemStatusBar() {
         <span className="font-display font-bold text-signal">SYSTEM ONLINE</span>
       </div>
       <span>|</span>
-      <span>3 TOOLS ACTIVE</span>
+      <span>5 TOOLS ACTIVE</span>
       <span>|</span>
       <span>{time.toLocaleTimeString('en-US', { hour12: false })}</span>
     </div>
