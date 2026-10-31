@@ -1,21 +1,12 @@
 import { Link } from 'react-router-dom'
 import { useState, useEffect } from 'react'
 import { Moon, Sun } from 'lucide-react'
+import { useTheme } from '../theme/useTheme'
 
 export default function LandingPage() {
-  const [theme, setTheme] = useState(() => localStorage.getItem('theme') || 'dark')
+  // Shared with the rest of the app (it used to keep its own copy of the theme)
+  const { theme, toggleTheme } = useTheme()
   const [time, setTime] = useState('')
-
-  useEffect(() => {
-    const root = document.documentElement
-    if (theme === 'dark') {
-      root.classList.add('dark')
-      localStorage.setItem('theme', 'dark')
-    } else {
-      root.classList.remove('dark')
-      localStorage.setItem('theme', 'light')
-    }
-  }, [theme])
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -30,7 +21,7 @@ export default function LandingPage() {
         <div className="font-mono font-bold tracking-widest text-lg text-emerald-400">AgentOS</div>
         <div className="flex items-center space-x-6">
           <button
-            onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+            onClick={toggleTheme}
             className="text-neutral-400 hover:text-emerald-400 focus:outline-none transition-colors"
           >
             {theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}

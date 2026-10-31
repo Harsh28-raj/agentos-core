@@ -1,3 +1,5 @@
+from urllib.parse import quote
+
 import httpx
 from langchain_core.tools import tool
 
@@ -12,7 +14,7 @@ def get_current_weather(location: str) -> str:
     """
     try:
         # We use wttr.in with the format=j1 to get a JSON response
-        url = f"https://wttr.in/{location}?format=j1"
+        url = f"https://wttr.in/{quote(location.strip(), safe='')}?format=j1"
         
         with httpx.Client(timeout=10.0) as client:
             response = client.get(url)

@@ -1,26 +1,26 @@
-import os
 from langgraph.prebuilt import create_react_agent
-from langchain_groq import ChatGroq
-from langchain_core.messages import SystemMessage
-from app.ai.llm_wrapper import FallbackLLMWrapper
 
+from app.ai.llm import agent_prompt, get_llm
+from app.ai.llm_wrapper import FallbackLLMWrapper
 from app.ai.tools.calendar_tools import check_calendar_availability, create_calendar_event
 
-llm = FallbackLLMWrapper(ChatGroq(model="llama-3.1-8b-instant", groq_api_key=os.getenv("GROQ_API_KEY"), max_retries=5, temperature=0.0, timeout=60.0))
-
-system_prompt = SystemMessage(content="""You are the Calendar Agent.
-Your role is to manage calendar events, check schedules, and create new events.
+SYSTEM_PROMPT = """You are the Calendar Agent.
+Your role is to check the user's schedule and create new events.
 
 CALENDAR EXECUTION POLICY & SAFEGUARDS:
-1. Present the event details to the user in chat.
-2. The supervisor will handle human-in-the-loop pauses before event creation.
+1. Resolve relative dates ("tomorrow at 4pm") using the current date given below.
+2. When asked to schedule something, check availability first if the user asked "am I free".
+3. `create_calendar_event` always pauses for an explicit human approval before the event is created.
+4. Always pass timestamps in ISO 8601 with an explicit offset.
 
-CRITICAL: You have access to external tools. You MUST invoke them using the internal tool calling API (tool_calls). NEVER write tool payloads, JSON structures, or XML (like <function...>) in your plain text response. If you are calling a tool, your text content should be empty or just a natural language transition, while the tool is invoked natively.
-""")
+If Google is not connected, tell the user to click "Connect Google" in the dashboard.
+CRITICAL: Invoke tools through the native tool-calling API. NEVER write tool payloads, JSON, or XML in your plain text response."""
 
-calendar_agent = create_react_agent(
-    llm,
-    tools=[check_calendar_availability, create_calendar_event],
-    prompt=system_prompt,
-    name="calendar_agent"
-)
+
+def build_calendar_agent(llm=None):
+    return create_react_agent(
+        llm or FallbackLLMWrapper(get_llm()),
+        tools=[check_calendar_availability, create_calendar_event],
+        prompt=agent_prompt(SYSTEM_PROMPT),
+        name="calendar_agent",
+    )

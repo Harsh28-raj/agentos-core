@@ -1,16 +1,8 @@
 import { apiClient } from './apiClient'
-import type { AuthTokens, User } from '../types/auth'
+import type { LoginResponse, User } from '../types/auth'
 
 export const authService = {
-  login: async (email: string, password: string): Promise<AuthTokens> => {
-    return apiClient.post('/auth/login', { email, password })
-  },
-
-  register: async (email: string, password: string): Promise<User> => {
-    return apiClient.post('/auth/register', { email, password })
-  },
-
-  getMe: async (): Promise<User> => {
-    return apiClient.get('/auth/me')
-  }
+  login: (email: string, password: string) => apiClient.post<LoginResponse>('/auth/login', { email, password }),
+  register: (email: string, password: string) => apiClient.post<{ user: User }>('/auth/register', { email, password }),
+  getMe: () => apiClient.get<User>('/auth/me'),
 }

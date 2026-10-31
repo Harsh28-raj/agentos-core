@@ -1,71 +1,56 @@
-import os
-from dotenv import load_dotenv
-from langchain_postgres import PGVector
-from langchain_community.embeddings import FastEmbedEmbeddings
+"""Long-term semantic memory (PGVector + FastEmbed). Every record is scoped to one user."""
+import logging
+import threading
 
-# Load environment variables
-load_dotenv()
+from app.db.postgres import PSYCOPG_URL
 
-DATABASE_URL = os.getenv("DATABASE_URL") or os.getenv("NEON_DATABASE_URL", "")
-# langchain_postgres requires psycopg3 sync or async URL. For simplicity, we use sync.
-# Convert postgresql+asyncpg:// to postgresql+psycopg:// if needed, or just standard postgresql://
-if "asyncpg" in DATABASE_URL:
-    DATABASE_URL = DATABASE_URL.replace("+asyncpg", "+psycopg")
-elif DATABASE_URL.startswith("postgresql://"):
-    DATABASE_URL = DATABASE_URL.replace("postgresql://", "postgresql+psycopg://")
+logger = logging.getLogger(__name__)
 
-# Remove query params for cleaner connection in PGVector if necessary, though sslmode=require might be needed.
-if "?" in DATABASE_URL:
-    DATABASE_URL = DATABASE_URL.split("?")[0]
-
-# Append sslmode for Neon DB
-if "sslmode=require" not in DATABASE_URL:
-    DATABASE_URL += "?sslmode=require"
-
-# Lightweight CPU-friendly Embeddings (Zero PyTorch / Low RAM overhead)
-embeddings = FastEmbedEmbeddings(model_name="BAAI/bge-small-en-v1.5")
-
-# Initialize PGVector Vector Store
-if DATABASE_URL:
-    try:
-        vector_store = PGVector(
-            embeddings=embeddings,
-            collection_name="agent_memory",
-            connection=DATABASE_URL,
-            use_jsonb=True
-        )
-        vector_store.create_tables_if_not_exists()
-    except Exception as e:
-        print(f"Failed to initialize PGVector: {e}")
-        vector_store = None
-else:
-    vector_store = None
+_vector_store = None
+_init_failed = False
+_lock = threading.Lock()
 
 
-def add_to_memory(text: str, metadata: dict = None) -> str:
-    """
-    Saves a given text snippet into PGVector store.
-    """
-    if not vector_store:
-        return "Error: PGVector store is not initialized."
-    try:
-        if metadata is None:
-            metadata = {"source": "user_input"}
-            
-        vector_store.add_texts(texts=[text], metadatas=[metadata])
-        return f"Fact successfully stored in long-term memory: '{text}'"
-    except Exception as e:
-        return f"Error saving to memory: {str(e)}"
+class MemoryUnavailable(RuntimeError):
+    pass
 
-def search_memory(query: str, k: int = 3) -> list:
-    """
-    Searches PGVector for relevant memory facts based on query similarity.
-    """
-    if not vector_store:
-        return []
-    try:
-        results = vector_store.similarity_search(query, k=k)
-        return [doc.page_content for doc in results]
-    except Exception as e:
-        print(f"Error reading memory: {e}")
-        return []
+
+def _get_store():
+    """Builds the store on first use: loading the embedding model at import slowed every startup."""
+    global _vector_store, _init_failed
+    if _vector_store is not None:
+        return _vector_store
+    if not PSYCOPG_URL or _init_failed:
+        raise MemoryUnavailable("Long-term memory requires a Postgres DATABASE_URL with pgvector.")
+    with _lock:
+        if _vector_store is None:
+            try:
+                from langchain_community.embeddings import FastEmbedEmbeddings
+                from langchain_postgres import PGVector
+
+                store = PGVector(
+                    embeddings=FastEmbedEmbeddings(model_name="BAAI/bge-small-en-v1.5"),
+                    collection_name="agent_memory",
+                    connection=PSYCOPG_URL.replace("postgresql://", "postgresql+psycopg://", 1),
+                    use_jsonb=True,
+                )
+                store.create_tables_if_not_exists()
+                _vector_store = store
+            except Exception as e:
+                _init_failed = True
+                logger.error(f"Failed to initialize PGVector: {e}")
+                raise MemoryUnavailable(f"Long-term memory is unavailable: {e}") from e
+    return _vector_store
+
+
+def add_to_memory(text: str, user_id: str, metadata: dict | None = None) -> None:
+    """Stores a snippet for `user_id`. Raises on failure so callers never report a false success."""
+    metadata = dict(metadata or {"source": "user_input"})
+    metadata["user_id"] = str(user_id)
+    _get_store().add_texts(texts=[text], metadatas=[metadata])
+
+
+def search_memory(query: str, user_id: str, k: int = 3) -> list[str]:
+    """Returns the `k` most similar snippets belonging to `user_id` only."""
+    results = _get_store().similarity_search(query, k=k, filter={"user_id": {"$eq": str(user_id)}})
+    return [doc.page_content for doc in results]

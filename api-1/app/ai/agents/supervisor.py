@@ -1,133 +1,139 @@
-import os
-from typing import Annotated, Literal, Sequence, TypedDict
-from langchain_core.messages import BaseMessage, HumanMessage
-from langgraph.graph import StateGraph, START, END
+"""Supervisor graph: routes each request to a specialised worker agent.
+
+    START -> supervisor -> <worker> -> supervisor -> ... -> FINISH (END)
+
+Workers report back to the supervisor so multi-step requests ("check my calendar, then
+email Rahul") can chain. A hop counter caps the chain at MAX_AGENT_HOPS worker runs per
+user message so a confused model can never loop.
+
+gmail_agent and calendar_agent are registered as *direct* subgraph nodes so LangGraph
+checkpoints their internal interrupt() state: Command(resume=...) continues at the exact
+interrupt() call. The other workers are wrapped and only contribute their final answer.
+"""
+import json
+import logging
+import re
+from typing import Annotated, Sequence, TypedDict
+
+from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
+from langchain_core.runnables import RunnableConfig
+from langgraph.graph import END, START, StateGraph
 from langgraph.graph.message import add_messages
-from langchain_groq import ChatGroq
-from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
-from pydantic import BaseModel
 
-# Checkpointer
-from dotenv import load_dotenv
-load_dotenv()
-redis_url = os.getenv("REDIS_URL")
-if redis_url:
-    import redis
-    from langgraph.checkpoint.redis import RedisSaver
-    redis_pool = redis.ConnectionPool.from_url(redis_url)
-    redis_conn = redis.Redis(connection_pool=redis_pool)
-    memory = RedisSaver(redis_client=redis_conn)
-else:
-    redis_conn = None
-    from langgraph.checkpoint.memory import MemorySaver
-    memory = MemorySaver()
+from app.ai.agents.calendar_agent import build_calendar_agent
+from app.ai.agents.coder_agent import build_coder_agent
+from app.ai.agents.gmail_agent import build_gmail_agent
+from app.ai.agents.research_agent import build_research_agent
+from app.ai.agents.vision_agent import build_vision_agent
+from app.ai.llm import context_window, get_llm, now_context
+from app.core import config
 
-# Import sub-agents
-from app.ai.agents.research_agent import research_agent
-from app.ai.agents.coder_agent import coder_agent
-from app.ai.agents.vision_agent import vision_agent
-from app.ai.agents.gmail_agent import gmail_agent
-from app.ai.agents.calendar_agent import calendar_agent
+logger = logging.getLogger(__name__)
 
-# The State for the Supervisor Graph
-class AgentState(TypedDict):
+MEMBERS = ["research_agent", "coder_agent", "vision_agent", "gmail_agent", "calendar_agent"]
+OPTIONS = ["FINISH", *MEMBERS]
+
+
+class AgentState(TypedDict, total=False):
     messages: Annotated[Sequence[BaseMessage], add_messages]
     next: str
+    hops: int
 
-# Define Routing choices
-members = ["research_agent", "coder_agent", "vision_agent", "gmail_agent", "calendar_agent"]
-options = ["FINISH"] + members
 
-class RouteResponse(BaseModel):
-    next: Literal["FINISH", "research_agent", "coder_agent", "vision_agent", "gmail_agent", "calendar_agent"]
+SYSTEM_PROMPT = f"""You are a supervisor managing these workers: {", ".join(MEMBERS)}.
+Given the conversation, decide which worker acts next, or FINISH.
+- research_agent: web search, weather, arithmetic, remembering/recalling facts, greetings and general chat.
+- coder_agent: writing or running Python code.
+- vision_agent: analyzing an uploaded image.
+- gmail_agent: searching, reading, drafting or sending emails.
+- calendar_agent: checking the schedule or creating calendar events.
+Rules:
+1. If the latest message is from the user, pick the worker for it.
+2. If a worker has replied and the user's whole request is answered, or the worker asked the user a question, respond FINISH.
+3. Only pick another worker if part of the user's request is still not done (e.g. "check my calendar, then email Rahul").
+4. Never pick the worker that just replied.
+Respond with JSON only, exactly one key "next": {{"next": "<one of {OPTIONS}>"}}"""
 
-# Supervisor LLM setup
-llm = ChatGroq(model="llama-3.1-8b-instant", groq_api_key=os.getenv("GROQ_API_KEY"), max_retries=5, temperature=0.0, timeout=60.0)
 
-system_prompt = (
-    "You are a supervisor tasked with managing a conversation between the following workers: {members}. "
-    "Given the conversation history, respond with the worker to act next. "
-    "Each worker will perform a task and respond with their results. "
-    "CRITICAL RULE: If a worker has just responded, and their response answers the user, provides information, or asks the user a question, you MUST respond with FINISH so the user can see it! "
-    "Do NOT route back to the same worker if they just spoke. ALWAYS route to FINISH when a worker replies to the user. "
-    "If the user wants to search the web or remember something, route to research_agent. "
-    "If the user wants to write or run code, route to coder_agent. "
-    "If the user wants to analyze an image, route to vision_agent. "
-    "If the user wants to read or send emails, route to gmail_agent. "
-    "If the user wants to check their schedule or create a calendar event, route to calendar_agent. "
-    'You must output your response in valid JSON format ONLY. Your JSON MUST contain exactly one key named "next", and its value must be the worker to act next or "FINISH". Example: {{"next": "FINISH"}}'
-)
+def _router_view(messages: Sequence[BaseMessage]) -> list[BaseMessage]:
+    """Plain-text transcript for the router: tool calls and tool results are dropped so the
+    router never sends tool-call history to a model that has no tools bound."""
+    view: list[BaseMessage] = []
+    for m in context_window(list(messages)):
+        if isinstance(m, HumanMessage):
+            view.append(HumanMessage(content=str(m.content)))
+        elif isinstance(m, AIMessage) and m.content:
+            speaker = m.name or "assistant"
+            view.append(AIMessage(content=f"[{speaker}] {m.content}"))
+    return view
 
-prompt = ChatPromptTemplate.from_messages([
-    ("system", system_prompt),
-    MessagesPlaceholder(variable_name="messages"),
-    ("system", "Given the conversation above, who should act next? Or should we FINISH? Select one of: {options}"),
-]).partial(options=str(options), members=", ".join(members))
 
-def supervisor_node(state: AgentState) -> dict:
-    # Force json_mode to bypass Groq's buggy native XML tool parser
-    supervisor_chain = prompt | llm.with_structured_output(RouteResponse, method="json_mode")
-    res = supervisor_chain.invoke(state)
-    print(f"=== SUPERVISOR ROUTING TO: {res.next} ===")
-    return {"next": res.next}
+def _parse_route(text: str) -> str | None:
+    match = re.search(r"\{.*\}", text or "", re.DOTALL)
+    if not match:
+        return None
+    try:
+        value = json.loads(match.group(0)).get("next")
+    except (json.JSONDecodeError, AttributeError):
+        return None
+    return value if value in OPTIONS else None
 
-# Helper to invoke a sub-graph node
-# NOTE: research, coder, and vision agents are wrapped because they don't use interrupt().
-# calendar and gmail agents are registered as DIRECT subgraph nodes (see below)
-# so LangGraph can properly track their internal interrupt() state.
-def _invoke_agent(agent, state: AgentState, config: dict = None) -> dict:
-    print(f"=== INVOKING AGENT: {agent.name} ===")
-    invoke_config = config or {}
-    res = agent.invoke(state, config=invoke_config)
-    last_msg = res["messages"][-1]
-    
-    msg_content = last_msg.content if getattr(last_msg, "content", None) else str(last_msg)
-    print(f"=== AGENT {agent.name} RETURNED: {msg_content[:100]}... ===")
-    
-    from langchain_core.messages import AIMessage
-    return {"messages": [AIMessage(content=msg_content, name=agent.name)]}
-    
-def research_node(state: AgentState, config: dict = None):
-    return _invoke_agent(research_agent, state, config)
 
-def coder_node(state: AgentState, config: dict = None):
-    return _invoke_agent(coder_agent, state, config)
+def build_supervisor_graph(checkpointer=None, llm=None, worker_llm=None):
+    """Compiles the graph. `llm`/`worker_llm` are injectable for tests (default: Groq)."""
+    router_llm = (llm or get_llm()).bind(response_format={"type": "json_object"})
 
-def vision_node(state: AgentState, config: dict = None):
-    return _invoke_agent(vision_agent, state, config)
+    async def supervisor_node(state: AgentState, config: RunnableConfig) -> dict:
+        messages = list(state.get("messages", []))
+        new_request = bool(messages) and isinstance(messages[-1], HumanMessage)
+        hops = 0 if new_request else state.get("hops", 0) + 1
 
-# Build the Graph
-builder = StateGraph(AgentState)
-builder.add_node("supervisor", supervisor_node)
-builder.add_node("research_agent", research_node)
-builder.add_node("coder_agent", coder_node)
-builder.add_node("vision_agent", vision_node)
+        if hops >= config_max_hops():
+            logger.info("Supervisor: hop limit reached, finishing")
+            return {"next": "FINISH", "hops": hops}
 
-# CRITICAL: Register calendar_agent and gmail_agent as DIRECT subgraph nodes.
-# This lets LangGraph's checkpointer track their internal interrupt() state,
-# so Command(resume="CONFIRM") resumes at the exact interrupt() line
-# instead of re-executing the tool from scratch.
-builder.add_node("gmail_agent", gmail_agent)
-builder.add_node("calendar_agent", calendar_agent)
+        prompt = [SystemMessage(content=f"{SYSTEM_PROMPT}\n\n{now_context()}"), *_router_view(messages),
+                  HumanMessage(content=f"Who should act next? Answer with JSON using one of {OPTIONS}.")]
+        try:
+            result = await router_llm.ainvoke(prompt, config)
+            route = _parse_route(result.content)
+        except Exception as e:
+            logger.warning(f"Supervisor routing failed: {e}")
+            route = None
 
-for member in members:
-    builder.add_edge(member, END)
+        # `next` still holds the previous route, i.e. the worker that just replied
+        last_worker = None if new_request else state.get("next")
+        if route is None:
+            # Unparseable answer: start with the general agent, or stop after a worker replied
+            route = "research_agent" if new_request else "FINISH"
+        if route == last_worker:
+            route = "FINISH"
+        logger.info(f"Supervisor routing to: {route} (hop {hops})")
+        return {"next": route, "hops": hops}
 
-builder.add_conditional_edges(
-    "supervisor",
-    lambda state: state["next"],
-    {
-        "research_agent": "research_agent",
-        "coder_agent": "coder_agent",
-        "vision_agent": "vision_agent",
-        "gmail_agent": "gmail_agent",
-        "calendar_agent": "calendar_agent",
-        "FINISH": END
-    }
-)
+    def wrap(agent):
+        async def run(state: AgentState, config: RunnableConfig) -> dict:
+            result = await agent.ainvoke({"messages": state["messages"]}, config)
+            last = result["messages"][-1]
+            content = last.content if getattr(last, "content", None) else str(last)
+            return {"messages": [AIMessage(content=content, name=agent.name)]}
+        return run
 
-builder.add_edge(START, "supervisor")
+    builder = StateGraph(AgentState)
+    builder.add_node("supervisor", supervisor_node)
+    builder.add_node("research_agent", wrap(build_research_agent(worker_llm)))
+    builder.add_node("coder_agent", wrap(build_coder_agent(worker_llm)))
+    builder.add_node("vision_agent", wrap(build_vision_agent(worker_llm)))
+    builder.add_node("gmail_agent", build_gmail_agent(worker_llm))
+    builder.add_node("calendar_agent", build_calendar_agent(worker_llm))
 
-supervisor_graph = builder.compile(
-    checkpointer=memory
-)
+    builder.add_edge(START, "supervisor")
+    builder.add_conditional_edges("supervisor", lambda s: s["next"], {**{m: m for m in MEMBERS}, "FINISH": END})
+    for member in MEMBERS:
+        builder.add_edge(member, "supervisor")
+
+    return builder.compile(checkpointer=checkpointer)
+
+
+def config_max_hops() -> int:
+    return max(1, config.MAX_AGENT_HOPS)
