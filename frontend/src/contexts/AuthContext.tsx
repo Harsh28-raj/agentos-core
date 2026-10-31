@@ -1,53 +1,44 @@
-import { createContext, useState, useEffect } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import type { ReactNode } from 'react'
 import type { User } from '../types/auth'
 import { authService } from '../services/authService'
-
-interface AuthContextType {
-  user: User | null
-  isLoading: boolean
-  login: (user: User, accessToken: string, refreshToken: string) => void
-  logout: () => void
-}
-
-export const AuthContext = createContext<AuthContextType | undefined>(undefined)
+import { AUTH_LOGOUT_EVENT, TOKEN_KEY } from '../services/apiClient'
+import { AuthContext } from './authContextValue'
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
   const [isLoading, setIsLoading] = useState(true)
 
+  const logout = useCallback(() => {
+    localStorage.removeItem(TOKEN_KEY)
+    localStorage.removeItem('refresh_token') // left behind by older versions
+    setUser(null)
+  }, [])
+
   useEffect(() => {
     const initAuth = async () => {
-      const token = localStorage.getItem('access_token')
-      if (token) {
+      if (localStorage.getItem(TOKEN_KEY)) {
         try {
-          const userData = await authService.getMe()
-          setUser(userData)
+          setUser(await authService.getMe())
         } catch {
-          localStorage.removeItem('access_token')
-          localStorage.removeItem('refresh_token')
+          logout()
         }
       }
       setIsLoading(false)
     }
     initAuth()
+  }, [logout])
+
+  useEffect(() => {
+    // apiClient fires this when any request comes back 401
+    window.addEventListener(AUTH_LOGOUT_EVENT, logout)
+    return () => window.removeEventListener(AUTH_LOGOUT_EVENT, logout)
+  }, [logout])
+
+  const login = useCallback((nextUser: User, accessToken: string) => {
+    localStorage.setItem(TOKEN_KEY, accessToken)
+    setUser(nextUser)
   }, [])
 
-  const login = (user: User, accessToken: string, refreshToken: string) => {
-    localStorage.setItem('access_token', accessToken)
-    localStorage.setItem('refresh_token', refreshToken)
-    setUser(user)
-  }
-
-  const logout = () => {
-    localStorage.removeItem('access_token')
-    localStorage.removeItem('refresh_token')
-    setUser(null)
-  }
-
-  return (
-    <AuthContext.Provider value={{ user, isLoading, login, logout }}>
-      {children}
-    </AuthContext.Provider>
-  )
+  return <AuthContext.Provider value={{ user, isLoading, login, logout }}>{children}</AuthContext.Provider>
 }

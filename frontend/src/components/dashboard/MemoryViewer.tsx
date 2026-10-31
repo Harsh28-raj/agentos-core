@@ -1,24 +1,35 @@
 import { Card } from '../common/Card'
-import type { Memory } from '../../types'
+import type { LogEntry } from '../../types'
+import { accent, muted, panel, panelTitle, tile } from './styles'
 
-export function MemoryViewer() {
-  const memories: Memory[] = [
-    { id: '1', content: 'User prefers dark mode.', timestamp: '2026-07-10T10:00:00Z' },
-    { id: '2', content: 'Project deadlines are strictly on Fridays.', timestamp: '2026-07-12T14:30:00Z' },
-    { id: '3', content: 'API keys are stored in Vault.', timestamp: '2026-07-13T09:15:00Z' },
-  ]
+function describe(log: LogEntry): string {
+  if (log.action_taken) {
+    const args = log.modified_args ?? log.original_args ?? {}
+    const what = String(args.summary ?? args.subject ?? args.action ?? args.tool ?? 'action')
+    const verb = { CONFIRM: 'Approved', REJECT: 'Rejected', EDIT: 'Edited and approved' }[log.action_taken] ?? log.action_taken
+    return `${verb}: ${what}`
+  }
+  return `${log.tool_name}: ${(log.tool_output?.output ?? '').slice(0, 160)}`
+}
+
+/** Episodic memory: human decisions and tool results of this conversation (audit log). */
+export function MemoryViewer({ logs, error }: { logs: LogEntry[]; error: string }) {
+  const entries = logs
+    .filter((log) => log.action_taken || (log.status === 'completed' && log.tool_output?.output))
+    .slice(-6)
+    .reverse()
 
   return (
-    <Card title={<span className="font-mono text-white text-sm">EPISODIC MEMORY</span>} className="h-full bg-[#0d0d0d] border-neutral-800 text-white transition-colors duration-200">
+    <Card title={<span className={panelTitle}>EPISODIC MEMORY</span>} className={panel}>
       <div className="space-y-4">
-        {memories.map((memory) => (
-          <div key={memory.id} className="text-sm">
-            <div className="font-mono text-[10px] text-emerald-500 mb-1">
-              {new Date(memory.timestamp).toLocaleString()}
+        {error && <div className="text-xs font-mono text-red-500">{error}</div>}
+        {!error && entries.length === 0 && <div className={`text-xs font-mono ${muted}`}>Nothing recorded for this conversation yet.</div>}
+        {entries.map((log) => (
+          <div key={log.id} className="text-sm">
+            <div className={`font-mono text-[10px] mb-1 ${accent}`}>
+              {log.created_at ? new Date(log.created_at + 'Z').toLocaleString() : ''}
             </div>
-            <div className="p-3 bg-neutral-900/40 border border-neutral-800/80 rounded-lg font-body leading-relaxed text-neutral-300">
-              {memory.content}
-            </div>
+            <div className={`${tile} font-body leading-relaxed text-neutral-700 dark:text-neutral-300 break-words`}>{describe(log)}</div>
           </div>
         ))}
       </div>

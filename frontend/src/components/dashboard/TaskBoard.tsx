@@ -1,26 +1,48 @@
 import { Card } from '../common/Card'
 import { StatusBadge } from '../common/StatusBadge'
-import type { Task } from '../../types'
+import type { LogEntry } from '../../types'
+import { muted, panel, panelTitle, tile } from './styles'
 
-export function TaskBoard() {
-  const tasks: Task[] = [
-    { id: '1', title: 'Summarize weekly reports', status: 'completed' },
-    { id: '2', title: 'Monitor stock prices', status: 'in_progress' },
-    { id: '3', title: 'Scrape documentation', status: 'pending' },
-    { id: '4', title: 'Generate invoices', status: 'failed' },
-  ]
+interface ToolRun {
+  id: string
+  tool: string
+  status: 'completed' | 'in_progress' | 'failed' | 'pending'
+  at: string | null
+}
 
+/** Tool calls of the current conversation, built from the audit log. */
+function toolRuns(logs: LogEntry[]): ToolRun[] {
+  const runs = new Map<string, ToolRun>()
+  for (const log of logs) {
+    if (!log.tool_name || log.tool_name.startsWith('HITL_')) continue
+    const output = log.tool_output?.output ?? ''
+    const failed = /error|failed|cancelled/i.test(output.slice(0, 120))
+    const status = log.status === 'completed' ? (failed ? 'failed' : 'completed') : log.status === 'awaiting_approval' ? 'pending' : 'in_progress'
+    runs.set(log.run_id, { id: log.run_id, tool: log.tool_name, status, at: log.created_at })
+  }
+  // A tool paused for approval is re-run on resume: hide the paused attempt once a later run exists
+  const ordered = [...runs.values()]
+  const visible = ordered.filter(
+    (run, i) => run.status !== 'pending' || !ordered.slice(i + 1).some((later) => later.tool === run.tool),
+  )
+  return visible.reverse().slice(0, 8)
+}
+
+export function TaskBoard({ logs, error }: { logs: LogEntry[]; error: string }) {
+  const runs = toolRuns(logs)
   return (
-    <Card title={<span className="font-mono text-white text-sm">ACTIVE TASKS</span>} className="h-full bg-[#0d0d0d] border-neutral-800 text-white transition-colors duration-200">
+    <Card title={<span className={panelTitle}>TOOL ACTIVITY</span>} className={panel}>
       <div className="space-y-3">
-        {tasks.map((task) => (
-          <div key={task.id} className="flex flex-col p-3 rounded-lg bg-neutral-900/40 border border-neutral-800/80 space-y-2 hover:border-neutral-600 transition-colors">
-            <div className="flex justify-between items-start">
-              <span className="font-body text-sm font-medium leading-tight text-neutral-200">{task.title}</span>
-              <StatusBadge status={task.status} />
+        {error && <div className="text-xs font-mono text-red-500">{error}</div>}
+        {!error && runs.length === 0 && <div className={`text-xs font-mono ${muted}`}>No tool calls in this conversation yet.</div>}
+        {runs.map((run) => (
+          <div key={run.id} className={`flex flex-col space-y-2 ${tile}`}>
+            <div className="flex justify-between items-start gap-2">
+              <span className="font-mono text-sm text-neutral-800 dark:text-neutral-200 break-all">{run.tool}</span>
+              <StatusBadge status={run.status} />
             </div>
-            <div className="font-mono text-[10px] text-neutral-500 uppercase">
-              ID: {task.id.padStart(4, '0')}
+            <div className={`font-mono text-[10px] uppercase ${muted}`}>
+              {run.at ? new Date(run.at + 'Z').toLocaleTimeString() : ''}
             </div>
           </div>
         ))}
