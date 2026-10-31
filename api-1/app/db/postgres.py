@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import sessionmaker
 
 from app.core import config
-from app.db.models import Base, EpisodicLog, UserToken  # noqa: F401  (re-exported)
+from app.db.models import Base, EpisodicLog  # noqa: F401  (EpisodicLog is re-exported)
 
 logger = logging.getLogger(__name__)
 
@@ -58,7 +58,12 @@ sync_engine = create_engine(SYNC_URL, pool_pre_ping=True, connect_args=_sync_arg
 SyncSessionLocal = sessionmaker(bind=sync_engine) if sync_engine else None
 
 
+# Set by init_db: whether long-term memory (pgvector) can work on this database
+PGVECTOR_AVAILABLE = False
+
+
 async def init_db():
+    global PGVECTOR_AVAILABLE
     if not engine:
         logger.warning("DATABASE_URL is not set. Auth, logs and Google tokens are disabled.")
         return
@@ -67,6 +72,7 @@ async def init_db():
         try:
             async with engine.begin() as conn:
                 await conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
+            PGVECTOR_AVAILABLE = True
         except Exception as e:
             logger.warning(f"pgvector extension unavailable (long-term memory disabled): {e}")
     try:

@@ -2,7 +2,6 @@ import json
 from unittest.mock import MagicMock
 
 import pytest
-from langchain_core.messages import AIMessage
 
 from conftest import route, tool_call
 
@@ -294,3 +293,17 @@ def test_recovers_after_a_crashed_run(client, llms, make_user):
     worker_llm.script += ["second answer"]
     res = client.post("/api/v1/chat", json={"message": "second", "thread_id": "t1"}, headers=user["headers"]).json()
     assert res == {"reply": "second answer"}
+
+
+def test_tool_calls_are_audited_on_every_path(client, llms, make_user, calendar):
+    router_llm, worker_llm = llms
+    user = make_user()
+    start_calendar_request(client, llms, user)
+    worker_llm.script += ["Booked!"]
+    router_llm.script += [route("FINISH")]
+    client.post("/api/v1/chat/approve", json={"thread_id": "t1", "action": "CONFIRM"}, headers=user["headers"])
+    import time
+    time.sleep(0.3)  # audit rows are written in the background
+    logs = client.get("/api/v1/logs/t1", headers=user["headers"]).json()["logs"]
+    tool_rows = [(log["tool_name"], log["status"]) for log in logs if log["tool_name"] == "create_calendar_event"]
+    assert ("create_calendar_event", "completed") in tool_rows

@@ -83,7 +83,7 @@ def resume_command(interrupts: list, value: Any) -> Command:
 def pause_payload(interrupts: list, reply: str | None = None) -> dict:
     data = interrupts[0].value if interrupts and isinstance(interrupts[0].value, dict) else {}
     return {
-        "reply": reply or f"⏸️ Awaiting your approval before executing: **{data.get('action', 'action')}**",
+        "reply": reply or f"⏸️ Awaiting your approval before executing: {data.get('action', 'action')}",
         "hitl_interrupt": True,
         "interrupt_data": data,
         "pending_count": len(interrupts),
@@ -130,12 +130,69 @@ def _log_in_background(**kwargs):
     task.add_done_callback(_background_tasks.discard)
 
 
-async def run_turn(graph, cfg: dict, graph_input) -> dict:
-    result = await graph.ainvoke(graph_input, cfg)
+async def iter_events(graph, cfg: dict, graph_input, key: str):
+    """Runs the graph once and yields UI events. Tool calls are written to the audit log here,
+    so /chat, /chat/approve and /chat/stream all leave the same trail. The final event is
+    either {"type": "hitl_pause", ...} or {"type": "done", ...}."""
+    input_tokens = output_tokens = 0
+    last_route = None
+    open_tools: dict[str, str] = {}  # run_id -> tool name, for tools that started but did not finish
+    async for event in graph.astream_events(graph_input, config=cfg, version="v2"):
+        kind = event.get("event")
+        name = event.get("name", "")
+        node = event.get("metadata", {}).get("langgraph_node")
+        if kind == "on_chain_start" and name in MEMBERS and node == name and name != last_route:
+            last_route = name
+            yield {"type": "route", "agent": name, "content": f"Routing task to {name.replace('_', ' ').title()}"}
+        elif kind == "on_chain_start" and name == "supervisor" and node == name:
+            last_route = None
+        elif kind == "on_tool_start":
+            tool_input = event.get("data", {}).get("input", {})
+            open_tools[str(event.get("run_id"))] = name
+            _log_in_background(thread_id=key, run_id=event.get("run_id", "unknown"), status="started",
+                               tool_name=name, tool_input=tool_input)
+            yield {"type": "tool_start", "tool": name, "content": f"Executing tool: {name}", "input": tool_input}
+        elif kind == "on_tool_end":
+            output = str(getattr(event.get("data", {}).get("output", ""), "content", event.get("data", {}).get("output", "")))
+            open_tools.pop(str(event.get("run_id")), None)
+            _log_in_background(thread_id=key, run_id=event.get("run_id", "unknown"), status="completed",
+                               tool_name=name, tool_output={"output": output[:5000]})
+            yield {"type": "tool_end", "tool": name, "content": f"Finished executing {name}", "output": output[:150]}
+        elif kind == "on_chat_model_end":
+            usage = getattr(event.get("data", {}).get("output"), "usage_metadata", None) or {}
+            input_tokens += usage.get("input_tokens", 0)
+            output_tokens += usage.get("output_tokens", 0)
+        elif kind == "on_chat_model_stream" and node != "supervisor":
+            # The supervisor's routing JSON is internal - never stream it to the user
+            chunk = event.get("data", {}).get("chunk")
+            if chunk is not None and getattr(chunk, "content", None) and not getattr(chunk, "tool_call_chunks", None):
+                yield {"type": "token", "content": chunk.content}
+
     interrupts = await pending_interrupts(graph, cfg)
     if interrupts:
-        return pause_payload(interrupts)
-    return {"reply": final_reply(list(result.get("messages", [])))}
+        # A tool paused by interrupt() never emits on_tool_end; it is re-run on resume
+        for run_id, tool_name in open_tools.items():
+            _log_in_background(thread_id=key, run_id=run_id, status="awaiting_approval", tool_name=tool_name)
+        yield _pause_event(pause_payload(interrupts))
+        return
+    state = await graph.aget_state(cfg)
+    yield {"type": "done", "reply": final_reply(list(state.values.get("messages", []))),
+           "tokens": {"input": input_tokens, "output": output_tokens, "total": input_tokens + output_tokens}}
+
+
+def _pause_event(pause: dict) -> dict:
+    return {"type": "hitl_pause", "content": pause["reply"], "tool": pause["interrupt_data"].get("tool"),
+            "pending_args": pause["interrupt_data"], "pending_count": pause["pending_count"]}
+
+
+async def run_turn(graph, cfg: dict, graph_input, key: str) -> dict:
+    final = None
+    async for event in iter_events(graph, cfg, graph_input, key):
+        final = event
+    if final["type"] == "hitl_pause":
+        return {"reply": final["content"], "hitl_interrupt": True, "interrupt_data": final["pending_args"],
+                "pending_count": final["pending_count"]}
+    return {"reply": final["reply"]}
 
 
 async def resolve_input(graph, cfg, user, thread_id, message):
@@ -165,7 +222,7 @@ async def chat_endpoint(request: ChatRequest, user: CurrentUser = Depends(get_cu
         graph_input, early = await resolve_input(graph, cfg, user, request.thread_id, request.message)
         if early:
             return early
-        return await run_turn(graph, cfg, graph_input)
+        return await run_turn(graph, cfg, graph_input, session_key(user, request.thread_id))
     except Exception as e:
         logger.exception("Chat error")
         return {"reply": friendly_error(e), "error": True}
@@ -186,7 +243,7 @@ async def approve_hitl(request: ApproveRequest, user: CurrentUser = Depends(get_
     await audit_decision(user, request.thread_id, interrupts, request.action,
                          updated_args=request.updated_args, feedback=request.feedback_message)
     try:
-        result = await run_turn(graph, cfg, resume_command(interrupts, value))
+        result = await run_turn(graph, cfg, resume_command(interrupts, value), session_key(user, request.thread_id))
     except Exception as e:
         logger.exception("Approve error")
         raise HTTPException(status_code=500, detail=friendly_error(e))
@@ -212,51 +269,11 @@ async def chat_stream_endpoint(request: ChatRequest, user: CurrentUser = Depends
         try:
             graph_input, early = await resolve_input(graph, cfg, user, request.thread_id, request.message)
             if early:
-                yield sse({"type": "hitl_pause", "content": early["reply"], "tool": early["interrupt_data"].get("tool"),
-                           "pending_args": early["interrupt_data"]})
+                yield sse(_pause_event(early))
                 return
-
             yield sse({"type": "thinking", "content": "Analyzing query and planning multi-agent steps..."})
-            input_tokens = output_tokens = 0
-            last_route = None
-            async for event in graph.astream_events(graph_input, config=cfg, version="v2"):
-                kind = event.get("event")
-                name = event.get("name", "")
-                node = event.get("metadata", {}).get("langgraph_node")
-                if kind == "on_chain_start" and name in MEMBERS and node == name and name != last_route:
-                    last_route = name
-                    yield sse({"type": "route", "content": f"Routing task to {name.replace('_', ' ').title()}"})
-                elif kind == "on_chain_start" and name == "supervisor" and node == name:
-                    last_route = None
-                elif kind == "on_tool_start":
-                    tool_input = event.get("data", {}).get("input", {})
-                    _log_in_background(thread_id=key, run_id=event.get("run_id", "unknown"), status="started",
-                                       tool_name=name, tool_input=tool_input)
-                    yield sse({"type": "tool_start", "tool": name, "content": f"Executing tool: {name}", "input": tool_input})
-                elif kind == "on_tool_end":
-                    output = str(event.get("data", {}).get("output", ""))
-                    _log_in_background(thread_id=key, run_id=event.get("run_id", "unknown"), status="completed",
-                                       tool_name=name, tool_output={"output": output[:5000]})
-                    yield sse({"type": "tool_end", "tool": name, "content": f"Finished executing {name}", "output": output[:150]})
-                elif kind == "on_chat_model_end":
-                    usage = getattr(event.get("data", {}).get("output"), "usage_metadata", None) or {}
-                    input_tokens += usage.get("input_tokens", 0)
-                    output_tokens += usage.get("output_tokens", 0)
-                elif kind == "on_chat_model_stream" and node != "supervisor":
-                    # The supervisor's routing JSON is internal - never stream it to the user
-                    chunk = event.get("data", {}).get("chunk")
-                    if chunk is not None and getattr(chunk, "content", None) and not getattr(chunk, "tool_call_chunks", None):
-                        yield sse({"type": "token", "content": chunk.content})
-
-            interrupts = await pending_interrupts(graph, cfg)
-            if interrupts:
-                pause = pause_payload(interrupts)
-                yield sse({"type": "hitl_pause", "content": pause["reply"], "tool": pause["interrupt_data"].get("tool"),
-                           "pending_args": pause["interrupt_data"]})
-            else:
-                state = await graph.aget_state(cfg)
-                yield sse({"type": "done", "reply": final_reply(list(state.values.get("messages", []))),
-                           "tokens": {"input": input_tokens, "output": output_tokens, "total": input_tokens + output_tokens}})
+            async for event in iter_events(graph, cfg, graph_input, key):
+                yield sse(event)
         except Exception as e:
             logger.exception("Stream error")
             yield sse({"type": "error", "content": friendly_error(e)})
