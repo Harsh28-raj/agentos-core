@@ -13,11 +13,12 @@
 [![Python](https://img.shields.io/badge/Python-3.11+-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://www.python.org/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-Async-009688?style=for-the-badge&logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
 [![LangGraph](https://img.shields.io/badge/LangGraph-Multi_Agent-1C3C3C?style=for-the-badge&logo=langchain&logoColor=white)](https://www.langchain.com/langgraph)
-[![Groq](https://img.shields.io/badge/Groq-Llama_3.3_70B-F55036?style=for-the-badge)](https://groq.com/)
+[![Groq](https://img.shields.io/badge/Groq-Llama_3.1-F55036?style=for-the-badge)](https://groq.com/)
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-Neon-4169E1?style=for-the-badge&logo=postgresql&logoColor=white)](https://neon.tech/)
 
 [**Live Demo**](https://agentos-core-git-backend-ml-harsh28-rajs-projects.vercel.app?_vercel_share=xLagqJXb5Q6K60BTpE0kJqSJd69uZRIV) ·
 [**API Docs (Swagger)**](https://agentos-core-ssl7.onrender.com/docs) ·
+[**Developer Docs**](docs/README.md) ·
 [**Report Bug**](https://github.com/Harsh28-raj/agentos-core/issues) ·
 [**Request Feature**](https://github.com/Harsh28-raj/agentos-core/issues)
 
@@ -85,8 +86,8 @@ This **Reason → Route → Pause → Resume** loop is what separates an agentic
 - Token & cost tracking per LLM call
 
 #### Real-Time Streaming
-- Server-Sent Events at `/api/chat/stream`
-- Live status events: `thinking`, `route`, `tool_start`, `tool_end`, `token`, `hitl_pause`, `complete`
+- Server-Sent Events at `/api/v1/chat/stream`
+- Live status events: `thinking`, `route`, `tool_start`, `tool_end`, `token`, `hitl_pause`, `done`
 - Frontend renders live "Routing to Coder Agent..." status, not a blank spinner
 
 </td>
@@ -99,7 +100,7 @@ This **Reason → Route → Pause → Resume** loop is what separates an agentic
 
 #### Memory & Auditability
 - Short-term thread memory via LangGraph's Postgres checkpointer
-- Long-term semantic memory via ChromaDB (RAG over uploaded PDFs & images)
+- Long-term semantic memory via Postgres pgvector, private to each user (RAG over uploaded PDFs & images)
 - Full episodic audit log — every tool call, latency, and human decision, queryable per thread
 
 </td>
@@ -109,10 +110,10 @@ This **Reason → Route → Pause → Resume** loop is what separates an agentic
 #### Tool Suite
 - 🌐 **Web Search** — Tavily API for live facts and news
 - 🌦️ **Weather** — real-time conditions
-- 🐍 **Code Interpreter** — sandboxed Python execution for math, data, and logic
+- 🐍 **Code Interpreter** — Python execution for math, data, and logic (opt-in via `ENABLE_CODE_INTERPRETER`, see [docs/SECURITY.md](docs/SECURITY.md))
 - 👁️ **Vision** — Groq vision model for image/diagram/receipt analysis, auto-synced to memory
-- 📄 **Document RAG** — PDF upload, parsed and embedded into ChromaDB
-- 📧 **Gmail Agent** — search, read, draft, and send email (draft-first, approval-gated)
+- 📄 **Document RAG** — PDF upload, parsed and embedded into pgvector
+- 📧 **Gmail Agent** — search, read, draft, and send email (draft-first, approval-gated, per-user Google OAuth)
 - 📅 **Calendar Agent** — create events from natural language, HITL-approved
 
 #### Frontend Experience
@@ -133,10 +134,10 @@ graph TB
     end
 
     subgraph API["Backend — FastAPI (Render)"]
-        C[POST /api/chat]
-        D[POST /api/chat/stream]
-        E[POST /api/chat/approve]
-        F[GET /api/logs/thread_id]
+        C[POST /api/v1/chat]
+        D[POST /api/v1/chat/stream]
+        E[POST /api/v1/chat/approve]
+        F[GET /api/v1/logs/thread_id]
     end
 
     subgraph Orchestrator["LangGraph Supervisor Layer"]
@@ -149,11 +150,11 @@ graph TB
 
     subgraph State["Persistence Layer"]
         L[(Postgres — Checkpointer & Episodic Logs)]
-        M[(ChromaDB — Long-Term Vector Memory)]
+        M[(pgvector — Long-Term Vector Memory)]
     end
 
     subgraph LLM["Groq Cloud"]
-        N[Llama 3.3 70B]
+        N[Llama 3.1 8B — configurable]
     end
 
     A --> C
@@ -188,7 +189,7 @@ sequenceDiagram
     participant D as Postgres
 
     U->>F: "Schedule a meeting tomorrow 4 PM with Rahul"
-    F->>B: POST /api/chat/stream
+    F->>B: POST /api/v1/chat/stream
     B->>S: Route request
     S-->>F: event: route (Calendar Agent)
     S->>S: Detects side-effecting action
@@ -197,7 +198,7 @@ sequenceDiagram
     F-->>U: Approval modal rendered
 
     U->>F: CONFIRM (or EDIT with new args)
-    F->>B: POST /api/chat/approve
+    F->>B: POST /api/v1/chat/approve
     B->>D: Fetch paused checkpoint
     D-->>B: Restore state
     B->>S: Resume execution
@@ -215,39 +216,39 @@ sequenceDiagram
 |---|---|
 | Backend Framework | FastAPI (async), Python 3.11+ |
 | Agent Orchestration | LangGraph (Supervisor pattern), LangChain Core |
-| LLM Inference | Groq Cloud — Llama 3.3 70B Versatile |
+| LLM Inference | Groq Cloud — `llama-3.1-8b-instant` by default (`GROQ_MODEL`), vision via `GROQ_VISION_MODEL` |
 | State & Checkpointing | PostgreSQL (Neon) via `AsyncPostgresSaver` |
-| Long-Term Memory | ChromaDB (vector store) |
+| Long-Term Memory | PostgreSQL pgvector + FastEmbed |
 | External Integrations | Gmail API, Google Calendar API, Tavily Search |
-| Frontend | React.js, Vite, TailwindCSS |
+| Frontend | React 19, Vite, TailwindCSS 4 |
+| Tests | pytest (fake LLMs, no keys needed) |
 | Deployment | Render (backend), Vercel (frontend) |
 
 ---
 
 ## Project Structure
 
+```text
 agentos-core/
-├── api-1/
-│ ├── app/
-│ │ ├── ai/
-│ │ │ ├── agents/
-│ │ │ │ ├── supervisor.py # Central routing controller
-│ │ │ │ ├── research_agent.py
-│ │ │ │ ├── coder_agent.py
-│ │ │ │ └── vision_agent.py
-│ │ │ ├── tools/
-│ │ │ │ ├── gmail.py # search / read / draft / send
-│ │ │ │ ├── calendar_tools.py
-│ │ │ │ └── code_interpreter.py
-│ │ │ └── agent.py # Graph definition & tool binding
-│ │ ├── db/
-│ │ │ ├── chroma_db/
-│ │ │ └── vector_store.py
-│ │ └── main.py # Routes, SSE generators, approval endpoint
-├── frontend/ # React + Vite SPA
-├── requirements.txt
-└── README.md
+├── api-1/                     # FastAPI + LangGraph backend
+│   ├── app/
+│   │   ├── main.py            # App, CORS, lifespan (DB, checkpointer, graph)
+│   │   ├── core/              # config, security (JWT/bcrypt/Fernet), auth deps, HITL helpers
+│   │   ├── db/                # SQLAlchemy models, Postgres setup, pgvector memory
+│   │   ├── ai/
+│   │   │   ├── agents/        # supervisor + research/coder/vision/gmail/calendar agents
+│   │   │   ├── tools/         # gmail, calendar, web search, weather, calculator, vision, code
+│   │   │   ├── llm.py         # LLM factory, date context, safe context window
+│   │   │   └── checkpointer.py
+│   │   └── routers/           # auth, chat (+stream/approve/history), upload, logs, system, Google OAuth
+│   ├── tests/                 # pytest suite
+│   └── requirements.txt
+├── frontend/                  # React + Vite SPA
+├── docs/                      # Developer documentation (start at docs/README.md)
+└── CLAUDE.md                  # Entry point for AI coding assistants
+```
 
+See [docs/BACKEND.md](docs/BACKEND.md) and [docs/FRONTEND.md](docs/FRONTEND.md) for a file-by-file map.
 
 ---
 
@@ -262,16 +263,17 @@ agentos-core/
 
 ```bash
 git clone https://github.com/Harsh28-raj/agentos-core.git
-cd agentos-core
+cd agentos-core/api-1
 
 python -m venv venv
 source venv/bin/activate      # Windows: venv\Scripts\activate
-pip install -r requirements.txt
+pip install -r requirements-dev.txt
 
 cp .env.example .env
-# Add GROQ_API_KEY, TAVILY_API_KEY, DATABASE_URL, GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET
+# Fill in GROQ_API_KEY, DATABASE_URL, JWT_SECRET_KEY, ENCRYPTION_KEY (see docs/CONFIGURATION.md)
 
 uvicorn app.main:app --reload --port 10000
+pytest                        # optional: run the test-suite (no API keys needed)
 ```
 
 ### Frontend
@@ -279,6 +281,7 @@ uvicorn app.main:app --reload --port 10000
 ```bash
 cd frontend
 npm install
+cp .env.example .env.local
 npm run dev
 ```
 
@@ -294,10 +297,12 @@ npm run dev
 | Variable | Required | Description |
 |---|:---:|---|
 | `GROQ_API_KEY` | ✅ | Groq inference API key |
-| `TAVILY_API_KEY` | ✅ | Live web search |
-| `DATABASE_URL` | ✅ | Postgres connection string (checkpointer + logs) |
-| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | ✅ | Gmail & Calendar OAuth |
-| `GMAIL_TOKEN` | ✅ | Generated via `generate_token.py` |
+| `DATABASE_URL` | ✅ | Postgres connection string (users, audit logs, checkpoints, pgvector memory) |
+| `JWT_SECRET_KEY` | ✅ | JWT signing secret (sessions reset on restart if unset) |
+| `ENCRYPTION_KEY` | ✅ for Google | Fernet key for stored Google tokens |
+| `TAVILY_API_KEY` | | Live web search |
+| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` / `GOOGLE_REDIRECT_URI` | for Google | Per-user Gmail & Calendar OAuth ("Connect Google" button) |
+| `CORS_ORIGINS`, `FRONTEND_URL`, `DEFAULT_TIMEZONE`, `ENABLE_CODE_INTERPRETER`, … | | See [docs/CONFIGURATION.md](docs/CONFIGURATION.md) |
 
 > [!WARNING]
 > Never commit `.env`, `credentials.json`, or `token.json` — all three are covered by `.gitignore`.
@@ -306,44 +311,56 @@ npm run dev
 
 ## API Overview
 
+All endpoints except register/login require `Authorization: Bearer <token>`.
+
 | Method | Endpoint | Description |
 |---|---|---|
 | `GET` | `/` | Health check |
-| `POST` | `/api/chat` | Synchronous agent chat |
-| `POST` | `/api/chat/stream` | Real-time SSE streaming (thinking/route/tool events) |
-| `POST` | `/api/chat/approve` | Resume a paused execution — `CONFIRM`, `REJECT`, or `EDIT` |
-| `POST` | `/api/upload` | Upload PDF or image — parsed and embedded into memory |
-| `GET` | `/api/logs/{thread_id}` | Full episodic audit trail for a session |
+| `POST` | `/api/v1/auth/register` · `/api/v1/auth/login` · `GET /api/v1/auth/me` | Account & JWT |
+| `POST` | `/api/v1/chat` | Synchronous agent chat |
+| `POST` | `/api/v1/chat/stream` | Real-time SSE streaming (thinking/route/tool/token/hitl_pause/done events) |
+| `POST` | `/api/v1/chat/approve` | Resume a paused action — `CONFIRM`, `REJECT`, or `EDIT` |
+| `GET` / `DELETE` | `/api/v1/chat/history/{thread_id}` | Conversation (+ pending approval) / delete it |
+| `POST` | `/api/v1/upload` | Upload PDF or image — parsed and embedded into the user's memory |
+| `GET` | `/api/v1/logs/{thread_id}` | Episodic audit trail for one of your threads |
+| `GET` | `/api/v1/system/status` | Live tool and integration status |
+| `*` | `/api/v1/integrations/google/...` | Connect / disconnect Google (OAuth) |
 
-Full interactive docs: **[agentos-core-ssl7.onrender.com/docs](https://agentos-core-ssl7.onrender.com/docs)**
+Full reference: [docs/API.md](docs/API.md) · Interactive docs: **[agentos-core-ssl7.onrender.com/docs](https://agentos-core-ssl7.onrender.com/docs)**
 
 ---
 
 ## Security
 
-- All API keys and OAuth secrets loaded via environment variables only
-- Draft-first policy on all outbound email — `send_email` never fires without explicit chat confirmation
-- Ambiguous confirmations (e.g., "maybe", "let me think") are rejected by the agent; only explicit phrases trigger dispatch
-- `.gitignore` excludes all credentials, tokens, and `.env` files from version control
+- Every endpoint is authenticated; the user id always comes from the JWT, and conversations, audit logs, memory, uploads and Google tokens are isolated per user
+- API keys and OAuth secrets come from environment variables only; Google tokens are encrypted at rest (Fernet)
+- Draft-first policy on outbound email, and `send_email` / `create_calendar_event` always pause for explicit approval
+- Approval replies are parsed conservatively: any negative ("no", "don't", "cancel") rejects, anything unclear ("maybe", "wait") asks again
+- The code interpreter is disabled unless `ENABLE_CODE_INTERPRETER=true` — see [docs/SECURITY.md](docs/SECURITY.md)
 
 ---
 
 ## Known Limitations
 
-- **Single-tenant Google OAuth.** Gmail and Calendar currently run on one authenticated account rather than per-user tokens — multi-tenant support is on the roadmap.
-- **ChromaDB is local, not yet cloud-persisted.** Long-term vector memory can be lost on a full redeploy since it isn't yet backed by a managed vector store.
-- **Calendar tool covers event creation only.** A "check availability / find free slots" tool is not yet implemented.
-- **Cross-agent tool chaining is limited.** Complex single-prompt chains across Calendar + Gmail in one flow are still being hardened.
+- **Code interpreter is not a true sandbox** — keep it off for multi-user deployments.
+- **No rate limiting or refresh tokens yet** — see [docs/SECURITY.md](docs/SECURITY.md).
+- **Uploaded images are stored on local disk** — they need a persistent disk on Render.
+- **Small default model** — `llama-3.1-8b-instant` can mis-route; guardrails cap and correct routing, and `GROQ_MODEL` can be raised.
 - **Render free-tier cold starts.** First request after inactivity can take 30–40 seconds.
+
+Full audit and status: [docs/BUG_AUDIT.md](docs/BUG_AUDIT.md)
 
 ---
 
 ## Roadmap
 
-- [ ] Migrate ChromaDB to a managed Postgres vector store (`pgvector`) for persistent long-term memory
-- [ ] Multi-tenant OAuth — per-user encrypted Gmail/Calendar tokens
-- [ ] Calendar "Check Availability" tool
-- [ ] Cross-agent tool chaining (e.g., check calendar → send Gmail invite in one flow)
+- [x] Managed Postgres vector store (`pgvector`) for persistent long-term memory
+- [x] Multi-tenant OAuth — per-user encrypted Gmail/Calendar tokens
+- [x] Calendar "Check Availability" tool
+- [x] Cross-agent tool chaining (supervisor loop with hop limit)
+- [ ] Isolated sandbox for the code interpreter
+- [ ] Rate limiting and refresh tokens
+- [ ] Thread list / conversation sidebar
 - [ ] Voice interface (Whisper API)
 - [ ] Local LLM fallback (Ollama) for privacy-sensitive sessions
 
