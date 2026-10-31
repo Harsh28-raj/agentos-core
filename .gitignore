@@ -45,4 +45,7 @@ token.json
 token.json.bak
 *.bak
 credentials..json
-api-1/.env
+api-1/.envapi-1/uploads/
+uploads/
+frontend/.env.local
+!.env.example
